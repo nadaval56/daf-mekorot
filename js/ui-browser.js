@@ -5,8 +5,29 @@
 // leaf segment (commentaries, midrash, etc., grouped by category).
 
 import { $, el, debounce, truncate, textDepth, buildSubRef, subSectionHeLabel } from './utils.js';
-import { cleanSefariaText, flattenSefariaText, formatMarehMakom } from './utils.js';
+import { cleanSefariaText, flattenSefariaText, formatMarehMakom, parseHeRef, buildSegmentCitation } from './utils.js';
 import { lookupName, fetchText, fetchRelated, SefariaError } from './sefaria-api.js';
+
+/**
+ * Pick the best Hebrew display title from a Sefaria text response or
+ * related-link object. We use `formatMarehMakom` when possible, then
+ * fall through Hebrew-only fields. We deliberately AVOID falling back
+ * to the English `ref` — English titles must not leak into the sheet.
+ */
+function displayTitleFor(obj) {
+  if (!obj) return '';
+  const cats = obj.heCategories || (obj.heCategory ? [obj.heCategory] : []);
+  if (obj.heRef) {
+    const formatted = formatMarehMakom(obj.heRef, cats);
+    if (formatted) return formatted;
+  }
+  return obj.heRef
+      || obj.heCommentator
+      || obj.heCollectiveTitle
+      || obj.heBook
+      || obj.heTitle
+      || '— מקור ללא שם בעברית —';
+}
 
 export function initBrowser({ onAddSource, showToast }) {
   const form = $('[data-role="search-form"]');
@@ -180,7 +201,7 @@ export function initBrowser({ onAddSource, showToast }) {
     }
     const current = el('span', {
       class: 'crumbs__current mixed-content',
-      text: result.heRef || result.ref,
+      text: displayTitleFor(result),
     });
     path.appendChild(current);
     crumbs.appendChild(path);
@@ -192,7 +213,7 @@ export function initBrowser({ onAddSource, showToast }) {
 
   function renderLeaf(result) {
     const heText = cleanSefariaText(flattenSefariaText(result.hebrew));
-    const title = formatMarehMakom(result.heRef, result.heCategories) || result.heRef || result.ref;
+    const title = displayTitleFor(result);
     const category = (result.heCategories || []).join(' • ');
 
     const head = el('div', { class: 'result-card__head' }, [
@@ -291,7 +312,8 @@ export function initBrowser({ onAddSource, showToast }) {
 
   function renderSection(result) {
     const segments = Array.isArray(result.hebrew) ? result.hebrew : [];
-    const title = formatMarehMakom(result.heRef, result.heCategories) || result.heRef || result.ref;
+    const title = displayTitleFor(result);
+    const parsed = parseHeRef(result.heRef, result.heCategories);
     const heSectionName = (result.heSectionNames || [])[result.heSectionNames?.length - 1] || 'פסוק';
     const lastAddressType = (result.addressTypes || [])[result.addressTypes?.length - 1] || 'Integer';
 
@@ -343,13 +365,14 @@ export function initBrowser({ onAddSource, showToast }) {
           drillFrom: { ref: result.ref, heRef: result.heRef },
         }),
       });
+      const segTitle = buildSegmentCitation(parsed, idx, lastAddressType) || `${title}, ${segHeLabel}`;
       const addBtn = el('button', {
         type: 'button',
         class: 'btn btn--primary btn--small',
         text: '← הוסף',
         onclick: () => {
           onAddSource({
-            title: `${title}, ${segHeLabel}`,
+            title: segTitle,
             text: segText,
             sefariaRef: segRef,
             sefariaHeRef: `${result.heRef} ${segHeLabel}`,
@@ -369,7 +392,7 @@ export function initBrowser({ onAddSource, showToast }) {
 
   function renderMultiSection(result, depth) {
     const arr = Array.isArray(result.hebrew) ? result.hebrew : [];
-    const title = result.heRef || result.ref;
+    const title = displayTitleFor(result);
     const sectionNameIdx = (result.heSectionNames?.length || 0) - depth;
     const heSectionName = (result.heSectionNames || [])[sectionNameIdx] || 'חלק';
     const addressType = (result.addressTypes || [])[sectionNameIdx] || 'Integer';
@@ -484,7 +507,6 @@ export function initBrowser({ onAddSource, showToast }) {
       ]);
       details.appendChild(summary);
 
-      // Group-level quick-add: stash all (up to a sane cap to avoid abuse).
       const addAll = el('button', {
         type: 'button',
         class: 'btn btn--ghost btn--small related-group__add-all',
@@ -494,34 +516,97 @@ export function initBrowser({ onAddSource, showToast }) {
       details.appendChild(addAll);
 
       const list = el('ul', { class: 'related-list' });
-      for (const link of group.items) {
-        list.appendChild(renderRelatedItem(link));
-      }
+      // For commentaries, fold the same commentator's sub-comment refs into
+      // one aggregate row — much easier to scan, and "↕ הרחב" then yields the
+      // full commentary on the verse instead of a single sub-comment.
+      const rows = group.def.key === 'Commentary'
+        ? groupByCommentator(group.items).map(renderCommentaryAggregate)
+        : group.items.map((link) => renderCommentaryAggregate({ items: [link] }));
+      for (const row of rows) list.appendChild(row);
       details.appendChild(list);
       container.appendChild(details);
     }
   }
 
-  function renderRelatedItem(link) {
-    const heTitle = link.heRef || link.heCommentator || link.heCollectiveTitle || link.ref;
-    const wrap = el('li', { class: 'related-item', dataset: { ref: link.ref } });
+  /**
+   * Aggregate consecutive related-links by the same commentator/collective
+   * title. Each output item has { heName, items }; aggregates of length > 1
+   * collapse to a single row whose expand/add use the common parent ref.
+   */
+  function groupByCommentator(items) {
+    const order = [];
+    const map = new Map();
+    for (const item of items) {
+      const key = item.heCommentator || item.commentator || item.heCollectiveTitle || item.collectiveTitle || item.heRef || item.ref;
+      if (!map.has(key)) {
+        const group = {
+          key,
+          heName: item.heCommentator || item.heCollectiveTitle || item.heRef || key,
+          items: [],
+        };
+        map.set(key, group);
+        order.push(group);
+      }
+      map.get(key).items.push(item);
+    }
+    return order;
+  }
+
+  /**
+   * Strip the trailing ":<n>" sub-comment from a commentary ref to find the
+   * shared parent (e.g. "Rashi on Genesis 1:1:1" → "Rashi on Genesis 1:1").
+   * Returns null if the refs don't share a common parent.
+   */
+  function commonParentRef(items) {
+    if (!items?.length) return null;
+    if (items.length === 1) return items[0].ref;
+    const parents = items.map((it) => String(it.ref || '').replace(/:\d+$/, ''));
+    return parents.every((p) => p === parents[0]) ? parents[0] : items[0].ref;
+  }
+
+  function renderCommentaryAggregate(group) {
+    const items = group.items;
+    const isAggregate = items.length > 1;
+    const parentRef = commonParentRef(items);
+    const primary = items[0];
+    // Display title: prefer formatted heRef of the parent for aggregates, else
+    // the single item's heRef. Falls through Hebrew-only fallbacks.
+    const aggTitle = isAggregate
+      ? `${group.heName || primary.heCommentator || primary.heRef} (${items.length} הערות)`
+      : displayTitleFor(primary);
+
+    const wrap = el('li', { class: 'related-item', dataset: { ref: parentRef } });
+
+    const openBtn = el('button', {
+      type: 'button',
+      class: 'btn btn--ghost btn--small',
+      text: '🔎 פתח',
+      title: 'פתח כמקור הראשי וצפה במקורות המקושרים אליו',
+      onclick: () => {
+        const target = parentRef || primary.ref;
+        loadRef(target, {
+          drillFrom: currentResult ? { ref: currentResult.ref, heRef: currentResult.heRef } : null,
+        });
+      },
+    });
+
+    const expandBtn = el('button', {
+      type: 'button',
+      class: 'btn btn--ghost btn--small',
+      text: '↕ הרחב',
+      onclick: () => toggleAggregateExpansion(wrap, group),
+    });
+
+    const addBtn = el('button', {
+      type: 'button',
+      class: 'btn btn--primary btn--small',
+      text: '← הוסף',
+      onclick: () => addAggregateToSheet(group),
+    });
 
     const head = el('div', { class: 'related-item__head' }, [
-      el('span', { class: 'related-item__title mixed-content', text: heTitle }),
-      el('div', { class: 'related-item__actions' }, [
-        el('button', {
-          type: 'button',
-          class: 'btn btn--ghost btn--small',
-          text: '↕ הרחב',
-          onclick: () => toggleRelatedExpansion(wrap, link),
-        }),
-        el('button', {
-          type: 'button',
-          class: 'btn btn--primary btn--small',
-          text: '← הוסף',
-          onclick: () => addRelatedToSheet(link),
-        }),
-      ]),
+      el('span', { class: 'related-item__title mixed-content', text: aggTitle }),
+      el('div', { class: 'related-item__actions' }, [expandBtn, openBtn, addBtn]),
     ]);
 
     const body = el('div', { class: 'related-item__body', hidden: true });
@@ -530,7 +615,7 @@ export function initBrowser({ onAddSource, showToast }) {
     return wrap;
   }
 
-  async function toggleRelatedExpansion(wrap, link) {
+  async function toggleAggregateExpansion(wrap, group) {
     const body = wrap.querySelector('.related-item__body');
     if (!body) return;
     if (!body.hidden) { body.hidden = true; return; }
@@ -538,57 +623,72 @@ export function initBrowser({ onAddSource, showToast }) {
     body.hidden = false;
     body.textContent = 'טוען…';
     try {
-      const result = await fetchText(link.ref);
-      const txt = cleanSefariaText(flattenSefariaText(result.hebrew)) || cleanSefariaText(flattenSefariaText(result.english));
-      body.textContent = txt || '— אין טקסט זמין —';
+      const parentRef = commonParentRef(group.items);
+      const result = await fetchText(parentRef);
+      const text = cleanSefariaText(flattenSefariaText(result.hebrew)) ||
+                   cleanSefariaText(flattenSefariaText(result.english));
+      body.textContent = text || '— אין טקסט זמין —';
       body.dataset.loaded = 'true';
-      body.dataset.text = txt; // cached for addRelatedToSheet
+      body.dataset.text = text;
+      body.dataset.ref = result.ref || parentRef;
+      body.dataset.heRef = result.heRef || '';
     } catch (err) {
-      console.warn('[browser] related expand failed:', err);
+      console.warn('[browser] aggregate expand failed:', err);
       body.textContent = 'שגיאה בטעינת המקור.';
     }
   }
 
-  async function addRelatedToSheet(link) {
+  async function addAggregateToSheet(group) {
     try {
-      // Reuse cached text if the user expanded it first.
+      const parentRef = commonParentRef(group.items);
+      // If user already expanded, reuse cached text.
+      const cachedBody = document.querySelector(
+        `.related-item[data-ref="${cssEscape(parentRef)}"] .related-item__body[data-loaded="true"]`
+      );
       let result;
       let text;
-      const cached = document.querySelector(`.related-item[data-ref="${cssEscape(link.ref)}"] .related-item__body[data-loaded="true"]`);
-      if (cached?.dataset.text) {
-        text = cached.dataset.text;
-        result = { ref: link.ref, heRef: link.heRef || link.ref, heCategories: [] };
+      if (cachedBody?.dataset.text) {
+        text = cachedBody.dataset.text;
+        result = {
+          ref: cachedBody.dataset.ref || parentRef,
+          heRef: cachedBody.dataset.heRef || group.items[0]?.heRef || parentRef,
+          heCategories: group.items[0]?.heCategory ? [group.items[0].heCategory] : [],
+        };
       } else {
-        result = await fetchText(link.ref);
+        result = await fetchText(parentRef);
         text = cleanSefariaText(flattenSefariaText(result.hebrew));
       }
       if (!text) { showToast('אין טקסט להוסיף.', 'error'); return; }
-      const title = formatMarehMakom(result.heRef || link.heRef, result.heCategories) || result.heRef || link.heRef || link.ref;
+      const title = displayTitleFor(result);
       onAddSource({
         title,
         text,
-        sefariaRef: result.ref || link.ref,
-        sefariaHeRef: result.heRef || link.heRef || link.ref,
+        sefariaRef: result.ref || parentRef,
+        sefariaHeRef: result.heRef || group.items[0]?.heRef || parentRef,
       });
       showToast(`נוסף לדף: ${truncate(title, 40)}`);
     } catch (err) {
-      console.warn('[browser] add related failed:', err);
+      console.warn('[browser] add aggregate failed:', err);
       showToast('לא הצלחנו להוסיף את המקור.', 'error');
     }
   }
 
   async function addAllInGroup(group, parentRef) {
-    const items = group.items;
+    // For Commentary, add one card per commentator (aggregated). For others,
+    // add one card per individual link.
+    const isCommentary = group.def.key === 'Commentary';
+    const items = isCommentary ? groupByCommentator(group.items) : group.items.map((l) => ({ items: [l] }));
     if (!items.length) return;
     if (items.length > 25 && !confirm(`${items.length} מקורות בקבוצה הזו — בטוח להוסיף את כולם?`)) return;
     showToast(`מוסיף ${items.length} מקורות מ${group.def.he}…`);
     let added = 0;
-    for (const link of items) {
+    for (const g of items) {
       try {
-        const result = await fetchText(link.ref);
+        const ref = commonParentRef(g.items);
+        const result = await fetchText(ref);
         const text = cleanSefariaText(flattenSefariaText(result.hebrew));
         if (!text) continue;
-        const title = formatMarehMakom(result.heRef, result.heCategories) || result.heRef || link.ref;
+        const title = displayTitleFor(result);
         onAddSource({
           title, text,
           sefariaRef: result.ref,
@@ -596,7 +696,7 @@ export function initBrowser({ onAddSource, showToast }) {
         });
         added++;
       } catch (err) {
-        console.warn('[browser] add-all skipped:', link.ref, err);
+        console.warn('[browser] add-all skipped:', g.items[0]?.ref, err);
       }
     }
     showToast(`נוספו ${added} מתוך ${items.length} מקורות.`);
