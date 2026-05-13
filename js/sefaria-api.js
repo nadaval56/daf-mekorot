@@ -46,7 +46,7 @@ export class SefariaError extends Error {
  *
  * Sefaria's /api/name/<query> returns an object with:
  *   { lang, type, completions: [...], completion_objects: [...], ref?, url? }
- * We normalize to a list of { label, ref }.
+ * We normalize to a list of { label, ref, type }.
  */
 export async function lookupName(query, { signal } = {}) {
   const q = (query || '').trim();
@@ -82,17 +82,17 @@ export async function lookupName(query, { signal } = {}) {
  *   {
  *     ref, heRef,
  *     categories, heCategories,
- *     hebrew: string,        // joined Hebrew text (may include nikud, te'amim — caller cleans)
- *     english: string,       // joined English text (best-effort)
+ *     hebrew: string|string[]|string[][],   // raw structured text — preserve depth
+ *     english: string|string[]|string[][],
  *     primaryCategory,
- *     raw,                   // the original payload, for debugging
+ *     sectionNames, heSectionNames, addressTypes,
+ *     book,
+ *     raw,
  *   }
  */
 export async function fetchText(ref, { signal } = {}) {
   if (!ref) throw new SefariaError('bad_input', 'יש לציין מקור.');
   const r = encodeURIComponent(ref);
-  // v3 prefers an explicit version specifier; "primary" picks the canonical
-  // hebrew/english version. We ask for both languages in one shot.
   const url = `${BASE}/v3/texts/${r}?version=hebrew&version=english&return_format=text_only`;
   const data = await fetchJSON(url, { signal });
 
@@ -103,8 +103,12 @@ export async function fetchText(ref, { signal } = {}) {
   return {
     ref: data?.ref || ref,
     heRef: data?.heRef || data?.ref || ref,
+    book: data?.book || '',
     categories: data?.categories || [],
     heCategories: data?.heCategories || [],
+    sectionNames: data?.sectionNames || [],
+    heSectionNames: data?.heSectionNames || [],
+    addressTypes: data?.addressTypes || [],
     hebrew: heVersion?.text ?? data?.he ?? '',
     english: enVersion?.text ?? data?.text ?? '',
     primaryCategory: data?.primary_category || (data?.categories || [])[0] || '',
@@ -113,8 +117,35 @@ export async function fetchText(ref, { signal } = {}) {
 }
 
 /**
+ * Fetch index (TOC) for a specific book. Returns schema info — sectionNames,
+ * addressTypes, lengths — used by the browser UI to label drill-down items.
+ */
+export async function fetchIndexFor(title, { signal } = {}) {
+  if (!title) throw new SefariaError('bad_input', 'יש לציין שם ספר.');
+  const url = `${BASE}/v2/index/${encodeURIComponent(title)}`;
+  const data = await fetchJSON(url, { signal });
+  // The schema can be a JaggedArrayNode (simple) or a SchemaNode (complex,
+  // e.g. Mishneh Torah with hilkhot subdivisions). For now we handle simple
+  // and surface enough info that the UI can degrade gracefully on complex.
+  const schema = data?.schema || {};
+  return {
+    title: data?.title || title,
+    heTitle: data?.heTitle || schema.heTitle || '',
+    sectionNames: schema.sectionNames || [],
+    heSectionNames: schema.heSectionNames || [],
+    addressTypes: schema.addressTypes || [],
+    lengths: schema.lengths || [],
+    depth: schema.depth ?? (schema.sectionNames?.length || 0),
+    isComplex: !!data?.has_children || schema.nodeType === 'SchemaNode',
+    categories: data?.categories || [],
+    raw: data,
+  };
+}
+
+/**
  * Fetch related links for a ref. Returns the raw {links, sheets, ...}.
- * We don't use this in Phase 1, but exporting now keeps the surface stable.
+ * The /api/related/ endpoint groups everything related to a ref: links,
+ * sheets, notes, web pages. We only care about links here.
  */
 export async function fetchRelated(ref, { signal } = {}) {
   if (!ref) throw new SefariaError('bad_input', 'יש לציין מקור.');
@@ -130,7 +161,6 @@ let indexPromise = null;
 export function fetchIndex({ signal } = {}) {
   if (!indexPromise) {
     indexPromise = fetchJSON(`${BASE}/index`, { signal }).catch((err) => {
-      // Let the next caller retry from scratch on failure.
       indexPromise = null;
       throw err;
     });
