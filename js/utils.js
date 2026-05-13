@@ -67,68 +67,312 @@ export function flattenSefariaText(value) {
  * Build a Hebrew citation ("מראה מקום") from a Sefaria heRef +
  * heCategories. Falls back to heRef untouched if no rule matches.
  *
- * Examples (illustrative — Sefaria's heRef strings have many shapes):
- *   ("בראשית א׳:א׳",         ["תנ\"ך", "תורה", "בראשית"])
- *     → "בראשית, פרק א פסוק א"
- *   ("סוכה ב׳ א",            ["תלמוד", "בבלי", "סדר מועד", "סוכה"])
- *     → "תלמוד בבלי, מסכת סוכה, דף ב עמוד א"
- *   ("רש״י על בראשית א׳:א׳:א׳", ["תלמוד", ...]) → keep raw heRef
+ * Format spec (from the user, 2026-05):
+ *   תנ"ך          → "<sefer>, פרק X, פסוק Y"
+ *   משנה           → "<masechet>, פרק X משנה Y"
+ *   תלמוד בבלי     → "<masechet>, דף X עמוד א/ב"
+ *   תלמוד ירושלמי   → "ירושלמי, <masechet>, פרק X הלכה Y"
+ *   משנה תורה       → 'הלכות <topic> לרמב"ם, פרק X הלכה Y'
+ *
+ * Hebrew letter locators keep gershayim only when they're multi-letter
+ * (so "פרק א" not "פרק א׳", but "פרק י״ב").
  */
 export function formatMarehMakom(heRef, heCategories) {
   if (!heRef) return '';
-  const cats = Array.isArray(heCategories) ? heCategories : [];
+  const parsed = parseHeRef(heRef, heCategories);
+  if (parsed) {
+    const out = formatParsed(parsed);
+    if (out) return out;
+  }
+  return String(heRef).trim();
+}
+
+/* --------------------------------------------------------------
+   Citation parsing / formatting internals.
+   -------------------------------------------------------------- */
+
+/**
+ * Parse a Sefaria heRef + heCategories into { kind, book, levels[] }
+ * for downstream formatting. Returns null if the structure isn't
+ * recognized — caller should fall back to the raw heRef.
+ *
+ * The book name is preferentially looked up via heCategories (where
+ * Sefaria stores the canonical Hebrew book name), so compound names
+ * like "מלכים א" or "הלכות תפלה וברכת כהנים" don't get split apart by
+ * naive whitespace tokenization.
+ */
+export function parseHeRef(heRef, heCategories) {
+  if (!heRef) return null;
   const ref = String(heRef).trim();
+  const cats = Array.isArray(heCategories) ? heCategories : [];
 
-  // Commentaries: "<commentator> על <base>". We keep them as-is — the
-  // raw heRef already reads naturally in Hebrew.
-  if (cats.includes('פרשנות') || /\s+על\s+/.test(ref)) {
-    return ref;
-  }
+  const kind = inferKind(ref, cats);
+  if (!kind) return null;
 
-  // Talmud Bavli: "<masechet> <daf> <amud>"
-  if (cats.includes('תלמוד') && cats.includes('בבלי')) {
-    const m = ref.match(/^(.+?)\s+([א-ת׳״']+)\s*([אב])\s*$/);
-    if (m) {
-      const [, masechet, daf, amud] = m;
-      return `תלמוד בבלי, מסכת ${masechet.trim()}, דף ${stripGershayim(daf)} עמוד ${amud}`;
-    }
-  }
+  // ── Two recursive kinds: targum and commentary use an "inner" base ref.
 
-  // Talmud Yerushalmi
-  if (cats.includes('תלמוד') && cats.includes('ירושלמי')) {
-    const m = ref.match(/^(.+?)\s+(.+)$/);
-    if (m) return `תלמוד ירושלמי, מסכת ${m[1].trim()}, ${m[2].trim()}`;
-  }
-
-  // Mishnah: "משנה <masechet> <perek>:<mishnah>"
-  if (cats.includes('משנה')) {
-    const m = ref.match(/^משנה\s+(.+?)\s+(.+)$/);
-    if (m) {
-      const [, masechet, locator] = m;
-      const parts = locator.split(/[:׃]/).map((p) => stripGershayim(p.trim()));
-      if (parts.length >= 2) {
-        return `משנה, מסכת ${masechet.trim()}, פרק ${parts[0]} משנה ${parts[1]}`;
-      }
-      return `משנה, מסכת ${masechet.trim()}, ${locator}`;
-    }
-  }
-
-  // Tanakh: "<sefer> <perek>:<pasuk>"
-  if (cats.includes('תנ"ך') || cats.includes('תנ״ך') || cats.includes('תנך')) {
-    const m = ref.match(/^(.+?)\s+(.+)$/);
-    if (m) {
-      const [, sefer, locator] = m;
-      const parts = locator.split(/[:׃]/).map((p) => stripGershayim(p.trim()));
-      if (parts.length === 2) {
-        return `${sefer.trim()}, פרק ${parts[0]} פסוק ${parts[1]}`;
-      }
-      if (parts.length === 1) {
-        return `${sefer.trim()}, פרק ${parts[0]}`;
+  if (kind === 'targum') {
+    // heRef shape: "<translator> <tanakh-style ref>"
+    // The translator name is a category in `cats` (e.g. "אונקלוס", "יונתן").
+    for (const c of cats) {
+      if (!c || c === 'תרגום' || c === 'תנ"ך' || c === 'תנ״ך') continue;
+      if (ref.startsWith(c + ' ')) {
+        const rest = ref.slice(c.length + 1).trim();
+        const innerCats = cats.filter((x) => x !== c && x !== 'תרגום').concat(['תנ"ך']);
+        const inner = parseHeRef(rest, innerCats);
+        if (inner) return { kind: 'targum', translator: c, inner };
       }
     }
+    return null;
   }
 
-  return ref;
+  if (kind === 'commentary') {
+    const m = ref.match(/^(.+?)\s+על\s+(.+)$/);
+    if (m) {
+      const commentator = m[1].trim();
+      const baseRef = m[2].trim();
+      // Recurse on the base; drop the commentary-specific cats so the inner
+      // parse picks Tanakh/Talmud/etc. correctly.
+      const innerCats = cats.filter((c) => c !== commentator && c !== 'פרשנות');
+      let inner = parseHeRef(baseRef, innerCats);
+      if (inner) {
+        // For commentaries on Tanakh, drop the trailing comment-number level
+        // (e.g. "רש״י על בראשית א:א:א" — the last "א" is the 1st Rashi on
+        // verse 1:1; users want "רש"י על בראשית, פרק א, פסוק א").
+        if (inner.kind === 'tanakh' && inner.levels.length > 2) {
+          inner = { ...inner, levels: inner.levels.slice(0, 2) };
+        }
+        return { kind: 'commentary', commentator, inner };
+      }
+    }
+    return { kind: 'commentary_raw', book: ref, levels: [] };
+  }
+
+  // ── Flat kinds: book + locator.
+
+  const stripped = stripKindPrefix(ref, kind);
+  let book = inferBookFromCategories(stripped, cats);
+  if (!book) {
+    // Fallback: split at the first whitespace. Works for non-compound book
+    // names; misses compounds like "מלכים א" without category help — which
+    // is OK because in practice heCategories carry the canonical book name.
+    if (kind === 'bavli') {
+      // Bavli needs special handling — the daf+amud combo is itself
+      // space-separated, so first-word splitting eats "סוכה" cleanly and
+      // parseBavliLevels takes care of the rest.
+      const m = stripped.match(/^(\S+)\s+(.+)$/);
+      book = m ? m[1] : stripped;
+    } else {
+      const m = stripped.match(/^(\S+)\s+(.+)$/);
+      book = m ? m[1] : stripped;
+    }
+  }
+  let rest = stripped.startsWith(book) ? stripped.slice(book.length).trim() : '';
+  rest = rest.replace(/^[,:׃]\s*/, '');
+
+  let levels;
+  if (kind === 'bavli') {
+    levels = parseBavliLevels(rest);
+  } else {
+    levels = rest ? splitLocator(rest) : [];
+  }
+  return { kind, book, levels };
+}
+
+function inferKind(ref, cats) {
+  if (
+    cats.includes('משנה תורה') ||
+    cats.some((c) => /רמב״ם|רמב"ם/.test(c)) ||
+    /^(?:משנה תורה|רמב״ם|רמב"ם)\s*,?\s*הלכות/.test(ref)
+  ) return 'rambam';
+  if (cats.includes('שולחן ערוך')) return 'shulchan';
+  if (cats.includes('טור')) return 'tur';
+  if (cats.includes('ירושלמי') || /^(?:תלמוד\s+)?ירושלמי/.test(ref)) return 'yerushalmi';
+  if (cats.includes('בבלי') || (cats.includes('תלמוד') && !cats.includes('ירושלמי') && !cats.includes('משנה'))) return 'bavli';
+  if (cats.includes('משנה')) return 'mishnah';
+  if (cats.includes('תרגום')) return 'targum';
+  if (cats.includes('פרשנות') || /\s+על\s+/.test(ref)) return 'commentary';
+  if (cats.includes('תנ"ך') || cats.includes('תנ״ך') || cats.includes('תנך')) return 'tanakh';
+  return null;
+}
+
+function stripKindPrefix(ref, kind) {
+  switch (kind) {
+    case 'rambam':
+      return ref.replace(/^(?:משנה תורה|רמב״ם|רמב"ם)\s*,?\s*/, '');
+    case 'shulchan':
+      return ref.replace(/^שולחן ערוך\s*,?\s*/, '');
+    case 'tur':
+      return ref.replace(/^טור\s*,?\s*/, '');
+    case 'yerushalmi':
+      return ref.replace(/^(?:תלמוד\s+ירושלמי|ירושלמי)\s*,?\s*/, '');
+    case 'bavli':
+      return ref.replace(/^(?:תלמוד\s+בבלי|בבלי)\s*,?\s*/, '');
+    case 'mishnah':
+      return ref.replace(/^משנה\s+/, '');
+    default:
+      return ref;
+  }
+}
+
+/**
+ * Pick the longest Hebrew category that appears at the start of `text`.
+ * Handles "מסכת X" / "משנה X" / "הלכות X" category names by also trying
+ * the suffix after the prefix word.
+ */
+function inferBookFromCategories(text, cats) {
+  let best = null;
+  const candidates = [];
+  for (const c of cats) {
+    if (!c || !/[֐-׿]/.test(c)) continue;
+    candidates.push(c);
+    const stripped = c.replace(/^(?:מסכת|פרק|משנה|הלכות)\s+/, '').trim();
+    if (stripped && stripped !== c) candidates.push(stripped);
+  }
+  for (const cand of candidates) {
+    if (text === cand || text.startsWith(cand + ' ') ||
+        text.startsWith(cand + ',') || text.startsWith(cand + ':') ||
+        text.startsWith(cand + '׃')) {
+      if (!best || cand.length > best.length) best = cand;
+    }
+  }
+  return best;
+}
+
+/**
+ * Bavli's daf+amud is space-separated, the optional line is colon-separated.
+ *   "ב׳ א:ה׳" → ["ב׳", "א", "ה׳"]
+ *   "ב׳ א"   → ["ב׳", "א"]
+ *   "ב׳"     → ["ב׳"]
+ *   ""       → []
+ */
+function parseBavliLevels(rest) {
+  const r = (rest || '').trim();
+  if (!r) return [];
+  const colonIdx = r.search(/[:׃]/);
+  const head = colonIdx >= 0 ? r.slice(0, colonIdx).trim() : r;
+  const tail = colonIdx >= 0 ? r.slice(colonIdx + 1).trim() : '';
+  const headParts = head.split(/\s+/).filter(Boolean);
+  const out = [...headParts];
+  if (tail) out.push(...splitLocator(tail));
+  return out;
+}
+
+/** Format a parsed citation back to Hebrew per the user's spec. */
+export function formatParsed(parsed) {
+  if (!parsed) return '';
+  const { kind } = parsed;
+
+  // Recursive kinds first (use parsed.inner / parsed.translator / parsed.commentator).
+  if (kind === 'targum') {
+    const inner = formatParsed(parsed.inner) || parsed.inner?.book || '';
+    return `תרגום ${parsed.translator} על ${inner}`;
+  }
+  if (kind === 'commentary') {
+    const inner = formatParsed(parsed.inner) || parsed.inner?.book || '';
+    return `${parsed.commentator} על ${inner}`;
+  }
+  if (kind === 'commentary_raw') return parsed.book;
+
+  const { book } = parsed;
+  const lv = (parsed.levels || []).map(presentHebrewLetters);
+  switch (kind) {
+    case 'tanakh': {
+      if (!lv.length) return book;
+      if (lv.length === 1) return `${book}, פרק ${lv[0]}`;
+      if (lv.length === 2) return `${book}, פרק ${lv[0]}, פסוק ${lv[1]}`;
+      return `${book}, פרק ${lv[0]}, פסוק ${lv[1]} (${lv.slice(2).join(':')})`;
+    }
+    case 'mishnah': {
+      if (!lv.length) return book;
+      if (lv.length === 1) return `${book}, פרק ${lv[0]}`;
+      return `${book}, פרק ${lv[0]} משנה ${lv[1]}`;
+    }
+    case 'bavli': {
+      if (!lv.length) return book;
+      if (lv.length === 1) return `${book}, דף ${lv[0]}`;
+      if (lv.length === 2) return `${book}, דף ${lv[0]} עמוד ${lv[1]}`;
+      return `${book}, דף ${lv[0]} עמוד ${lv[1]}, שורה ${lv[2]}`;
+    }
+    case 'yerushalmi': {
+      // Per spec: "ירושלמי <masechet>, פרק X הלכה Y" — single comma after masechet.
+      if (!lv.length) return `ירושלמי ${book}`;
+      if (lv.length === 1) return `ירושלמי ${book}, פרק ${lv[0]}`;
+      if (lv.length === 2) return `ירושלמי ${book}, פרק ${lv[0]} הלכה ${lv[1]}`;
+      return `ירושלמי ${book}, פרק ${lv[0]} הלכה ${lv[1]}, שורה ${lv[2]}`;
+    }
+    case 'rambam': {
+      // Category names include the "הלכות " prefix; strip so we don't double it.
+      const topic = book.replace(/^הלכות\s+/, '');
+      if (!lv.length) return `הלכות ${topic} לרמב"ם`;
+      if (lv.length === 1) return `הלכות ${topic} לרמב"ם, פרק ${lv[0]}`;
+      return `הלכות ${topic} לרמב"ם, פרק ${lv[0]} הלכה ${lv[1]}`;
+    }
+    case 'shulchan': {
+      if (!lv.length) return `שולחן ערוך, ${book}`;
+      if (lv.length === 1) return `שולחן ערוך, ${book}, סימן ${lv[0]}`;
+      return `שולחן ערוך, ${book}, סימן ${lv[0]} סעיף ${lv[1]}`;
+    }
+    case 'tur': {
+      if (!lv.length) return `טור, ${book}`;
+      if (lv.length === 1) return `טור, ${book}, סימן ${lv[0]}`;
+      return `טור, ${book}, סימן ${lv[0]} סעיף ${lv[1]}`;
+    }
+  }
+  return book;
+}
+
+/**
+ * Build the citation for one sub-segment given the parent's parsed
+ * citation. Used when adding a single segment (verse / line / halacha)
+ * from the section view — the parent's heRef doesn't include the new
+ * sub-level so we extend `levels` (recursing into inner parses when the
+ * parent is a commentary/targum) and re-format.
+ */
+export function buildSegmentCitation(parentParsed, segIndex, segAddressType) {
+  const extended = extendParsedWithSeg(parentParsed, segIndex, segAddressType);
+  return extended ? formatParsed(extended) : null;
+}
+
+function extendParsedWithSeg(parsed, segIndex, segAddressType) {
+  if (!parsed) return null;
+  if (parsed.kind === 'targum' || parsed.kind === 'commentary') {
+    const inner = extendParsedWithSeg(parsed.inner, segIndex, segAddressType);
+    return inner ? { ...parsed, inner } : null;
+  }
+  const levels = [...(parsed.levels || [])];
+  if (parsed.kind === 'bavli' && segAddressType === 'Talmud') {
+    // Drilling from whole tractate into an amud: contributes daf+amud (2 levels).
+    const daf = numToHebrewLetters(2 + Math.floor(segIndex / 2));
+    const amud = segIndex % 2 === 0 ? 'א' : 'ב';
+    levels.push(presentHebrewLetters(daf), amud);
+  } else {
+    levels.push(numToHebrewLetters(segIndex + 1));
+  }
+  return { ...parsed, levels };
+}
+
+/**
+ * Split a locator like "א׳:ה׳" → ["א׳", "ה׳"].
+ * Range syntax ("א׳-ה׳") is preserved as a single string for the level.
+ */
+function splitLocator(locator) {
+  return String(locator).split(/[:׃]/).map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Render a Hebrew numeral string with idiomatic gershayim:
+ *   single letter        → no gershayim   ("א")
+ *   multi-letter number  → gershayim before last char ("ט״ו", "י״ב")
+ *   non-numeric / mixed  → return as-is
+ */
+export function presentHebrewLetters(s) {
+  const stripped = String(s || '').replace(/[׳״''""]/g, '').trim();
+  if (!stripped) return '';
+  // Heuristic: a numeral is up to ~4 Hebrew letters from the standard set.
+  if (!/^[אבגדהוזחטיכלמנסעפצקרשתךםןףץ]{1,4}$/.test(stripped)) return s;
+  if (stripped.length === 1) return stripped;
+  return stripped.slice(0, -1) + '״' + stripped.slice(-1);
 }
 
 /**
