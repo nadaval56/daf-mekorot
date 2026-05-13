@@ -1,0 +1,18 @@
+/* Hebrew web fonts. Loaded via Google Fonts in index.html. */
+
+:root {
+  --font-frank: 'Frank Ruhl Libre', 'David Libre', 'Times New Roman', serif;
+  --font-david: 'David Libre', 'Frank Ruhl Libre', 'Times New Roman', serif;
+  --font-bellefair: 'Bellefair', 'Frank Ruhl Libre', serif;
+  --font-heebo: 'Heebo', 'Arial Hebrew', 'Arial', sans-serif;
+  --font-ui: 'Heebo', 'Arial Hebrew', 'Arial', sans-serif;
+}
+
+.sheet[data-font='Frank Ruhl Libre'] .source-card__text,
+.sheet[data-font='Frank Ruhl Libre'] .source-card__title { font-family: var(--font-frank); }
+.sheet[data-font='David Libre'] .source-card__text,
+.sheet[data-font='David Libre'] .source-card__title { font-family: var(--font-david); }
+.sheet[data-font='Bellefair'] .source-card__text,
+.sheet[data-font='Bellefair'] .source-card__title { font-family: var(--font-bellefair); }
+.sheet[data-font='Heebo'] .source-card__text,
+.sheet[data-font='Heebo'] .source-card__title { font-family: var(--font-heebo); }

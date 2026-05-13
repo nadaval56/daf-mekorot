@@ -1,0 +1,143 @@
+/* ============================================================
+   @media print — controls how the sheet renders to PDF / paper.
+   ============================================================ */
+
+@page {
+  size: A4;
+  margin: 2cm;
+}
+
+.sheet[data-margins='narrow'] { --print-margin: 1.4cm; }
+.sheet[data-margins='normal'] { --print-margin: 2cm; }
+.sheet[data-margins='wide']   { --print-margin: 2.8cm; }
+
+@media print {
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Hide everything except the sheet itself. */
+  .app-header,
+  .panel--browser,
+  .panel__head,
+  .sheet__footer,
+  .source-card__actions,
+  .modal,
+  .toast { display: none !important; }
+
+  body { display: block; }
+  .app-main { display: block; padding: 0; }
+
+  .panel,
+  .panel--sheet {
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    width: 100%;
+    max-width: none;
+  }
+
+  .sheet {
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Title at the top of the printed page */
+  .sheet::before {
+    content: attr(data-print-title);
+    display: block;
+    text-align: center;
+    font-family: 'Frank Ruhl Libre', serif;
+    font-size: 18pt;
+    font-weight: 700;
+    margin-bottom: 0.8cm;
+    padding-bottom: 0.3cm;
+    border-bottom: 1px solid #000;
+  }
+
+  .source-list {
+    gap: 0.7cm;
+  }
+
+  .source-card {
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .source-card + .source-card {
+    border-top: 1px solid #999 !important;
+    padding-top: 0.5cm !important;
+  }
+
+  .source-card__head { gap: 0.4em; }
+
+  .source-card__badge { display: none; }
+
+  .source-card__number {
+    color: #000 !important;
+    font-weight: 700;
+  }
+
+  .source-card__title {
+    font-family: 'Frank Ruhl Libre', serif;
+    font-size: 13pt;
+    font-weight: 700;
+    color: #000 !important;
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  .source-card__text {
+    font-family: 'Frank Ruhl Libre', serif;
+    color: #000 !important;
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    line-height: 1.7;
+  }
+
+  /* Page-break-per-source mode */
+  .sheet[data-page-break='true'] .source-card {
+    page-break-after: always;
+    break-after: page;
+  }
+  .sheet[data-page-break='true'] .source-card:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .sheet[data-page-break='true'] .source-card + .source-card {
+    border-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  /* High-contrast B/W mode */
+  .sheet[data-print-mode='bw-high-contrast'] .source-card__title,
+  .sheet[data-print-mode='bw-high-contrast'] .source-card__text {
+    color: #000 !important;
+  }
+  .sheet[data-print-mode='bw-high-contrast'] .source-card + .source-card {
+    border-top: 2px solid #000 !important;
+  }
+
+  /* Hide number column when disabled */
+  .sheet[data-show-numbering='false'] .source-card__number { display: none !important; }
+
+  /* Sefaria attribution footer on every printed page */
+  @page {
+    @bottom-center {
+      content: 'מקור: ספריא — sefaria.org';
+      font-family: 'Heebo', sans-serif;
+      font-size: 8pt;
+      color: #555;
+    }
+  }
+}

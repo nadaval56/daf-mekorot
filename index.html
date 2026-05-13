@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>דף מקורות</title>
+    <meta name="description" content="כלי לבניית דפי מקורות עם אינטגרציה לספריא — מורי שיעורי שבת ומחנכים בחינוך תורני." />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;700&family=David+Libre:wght@400;500;700&family=Bellefair&family=Heebo:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="css/fonts.css" />
+    <link rel="stylesheet" href="css/main.css" />
+    <link rel="stylesheet" href="css/rtl.css" />
+    <link rel="stylesheet" href="css/print.css" media="print" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="app-header__brand">
+        <h1>דף מקורות</h1>
+        <span class="app-header__tagline">בניית דפי מקורות לשיעורי תורה</span>
+      </div>
+      <div class="app-header__actions">
+        <button type="button" class="btn btn--ghost" data-action="open-library">
+          📂 הדפים שלי
+        </button>
+        <button type="button" class="btn btn--ghost" data-action="open-settings">
+          ⚙️ הגדרות עיצוב
+        </button>
+        <button type="button" class="btn btn--ghost" data-action="new-sheet">
+          📄 דף חדש
+        </button>
+        <button type="button" class="btn btn--primary" data-action="export-print">
+          🖨 הדפסה / PDF
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Right panel: the source sheet under construction -->
+      <section class="panel panel--sheet" aria-label="דף המקורות">
+        <div class="panel__head">
+          <input
+            type="text"
+            class="sheet-title"
+            data-role="sheet-title"
+            placeholder="שם השיעור (לדוגמה: פרשת לך-לך — פרשני התורה על 'לך לך')"
+            aria-label="שם השיעור"
+          />
+          <div class="panel__head-row">
+            <span class="sheet-meta" data-role="sheet-meta">טיוטה • לא נשמרה עדיין</span>
+            <div class="panel__head-actions">
+              <button type="button" class="btn btn--ghost btn--small" data-action="add-custom">
+                ➕ הוסף מקור עצמאי
+              </button>
+              <button type="button" class="btn btn--ghost btn--small" data-action="save-sheet">
+                💾 שמור בספרייה
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sheet" data-role="sheet">
+          <ol class="source-list" data-role="source-list"></ol>
+          <div class="sheet__empty" data-role="sheet-empty">
+            <p>הדף עוד ריק.</p>
+            <p>חפש מקור בפאנל ספריא או הוסף מקור עצמאי כדי להתחיל.</p>
+          </div>
+        </div>
+
+        <footer class="sheet__footer">
+          <span>מקורות הטקסטים: <a href="https://www.sefaria.org" target="_blank" rel="noopener">ספריא</a></span>
+        </footer>
+      </section>
+
+      <!-- Left panel: Sefaria browser -->
+      <section class="panel panel--browser" aria-label="דפדפן ספריא">
+        <div class="panel__head">
+          <h2>ספריא</h2>
+          <form class="search" data-role="search-form" autocomplete="off">
+            <input
+              type="search"
+              data-role="search-input"
+              class="search__input"
+              placeholder="חיפוש מקור (לדוגמה: בראשית א, סוכה ב ע״א, רש״י על בראשית)"
+              aria-label="חיפוש מקור בספריא"
+            />
+            <button type="submit" class="btn btn--primary btn--small">חפש</button>
+          </form>
+          <div class="search__suggestions" data-role="suggestions" hidden></div>
+        </div>
+
+        <div class="browser" data-role="browser">
+          <div class="browser__empty" data-role="browser-empty">
+            <p>חפש מקור כדי להתחיל.</p>
+            <p class="hint">דוגמאות: <code>בראשית א</code>, <code>שמות יט יח</code>, <code>סוכה ב</code>, <code>משנה ברכות א א</code></p>
+          </div>
+          <div class="browser__loading" data-role="browser-loading" hidden>טוען…</div>
+          <div class="browser__result" data-role="browser-result" hidden></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal: settings -->
+    <dialog class="modal" data-role="settings-modal">
+      <form method="dialog" class="modal__body">
+        <h3>הגדרות עיצוב</h3>
+        <label class="field">
+          <span>פונט</span>
+          <select data-role="setting-font">
+            <option value="Frank Ruhl Libre">Frank Ruhl Libre (קלאסי)</option>
+            <option value="David Libre">David Libre</option>
+            <option value="Bellefair">Bellefair</option>
+            <option value="Heebo">Heebo (סנס-סריף)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>גודל גופן</span>
+          <select data-role="setting-font-size">
+            <option value="12">12pt</option>
+            <option value="14" selected>14pt</option>
+            <option value="16">16pt</option>
+            <option value="18">18pt</option>
+          </select>
+        </label>
+        <label class="field field--inline">
+          <input type="checkbox" data-role="setting-page-break" />
+          <span>כל מקור בעמוד חדש בהדפסה</span>
+        </label>
+        <label class="field field--inline">
+          <input type="checkbox" data-role="setting-numbering" checked />
+          <span>הצג מספור מקורות</span>
+        </label>
+        <label class="field">
+          <span>שולי דף</span>
+          <select data-role="setting-margins">
+            <option value="narrow">צר</option>
+            <option value="normal" selected>רגיל</option>
+            <option value="wide">רחב</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>מצב הדפסה</span>
+          <select data-role="setting-print-mode">
+            <option value="color" selected>צבעוני</option>
+            <option value="bw-high-contrast">שחור-לבן ניגודיות מוגברת</option>
+          </select>
+        </label>
+        <menu class="modal__actions">
+          <button type="button" class="btn btn--ghost" data-action="close-settings">סגור</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <!-- Modal: library -->
+    <dialog class="modal" data-role="library-modal">
+      <div class="modal__body">
+        <h3>הדפים שלי</h3>
+        <ul class="library" data-role="library-list"></ul>
+        <div class="library__empty" data-role="library-empty">עוד לא שמרת דפים.</div>
+        <menu class="modal__actions">
+          <button type="button" class="btn btn--ghost" data-action="close-library">סגור</button>
+        </menu>
+      </div>
+    </dialog>
+
+    <div class="toast" data-role="toast" hidden></div>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

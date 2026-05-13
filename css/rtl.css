@@ -1,0 +1,22 @@
+/* RTL adjustments — most of the layout already works thanks to logical
+   properties + dir="rtl", but a few mixed-content tweaks live here. */
+
+html { direction: rtl; }
+body { text-align: right; }
+
+input, textarea, select { direction: rtl; text-align: right; }
+
+/* Mixed Hebrew + numerals (e.g. "פרק א פסוק א") need plaintext bidi
+   so that adjacent numerals/letters stay in source order. */
+.mixed-content,
+.source-card__title,
+.result-card__title,
+.sheet-title {
+  unicode-bidi: plaintext;
+}
+
+/* Code snippets in hints should still read LTR. */
+code { direction: ltr; unicode-bidi: isolate; }
+
+/* The header actions row keeps natural RTL order. */
+.app-header__actions { direction: rtl; }
