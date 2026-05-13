@@ -105,20 +105,6 @@
     line-height: 1.7;
   }
 
-  /* Page-break-per-source mode */
-  .sheet[data-page-break='true'] .source-card {
-    page-break-after: always;
-    break-after: page;
-  }
-  .sheet[data-page-break='true'] .source-card:last-child {
-    page-break-after: auto;
-    break-after: auto;
-  }
-  .sheet[data-page-break='true'] .source-card + .source-card {
-    border-top: 0 !important;
-    padding-top: 0 !important;
-  }
-
   /* High-contrast B/W mode */
   .sheet[data-print-mode='bw-high-contrast'] .source-card__title,
   .sheet[data-print-mode='bw-high-contrast'] .source-card__text {

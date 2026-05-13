@@ -28,7 +28,6 @@ export function initSheetUI({ sheet, showToast }) {
     const s = snapshot.settings || {};
     sheetEl.dataset.font = s.font || 'Frank Ruhl Libre';
     sheetEl.dataset.fontSize = String(s.fontSize || 14);
-    sheetEl.dataset.pageBreak = String(!!s.pageBreakPerSource);
     sheetEl.dataset.showNumbering = String(s.showNumbering !== false);
     sheetEl.dataset.margins = s.margins || 'normal';
     sheetEl.dataset.printMode = s.printMode || 'color';

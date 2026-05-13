@@ -204,3 +204,96 @@ export function truncate(text, max = 100) {
   const t = String(text);
   return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
 }
+
+/* --------------------------------------------------------------
+   Sefaria structural helpers — depth detection & sub-ref naming.
+   -------------------------------------------------------------- */
+
+/**
+ * Recursive depth of a Sefaria text value.
+ *   "..."             → 0  (leaf segment)
+ *   ["a", "b"]        → 1  (one section / chapter / daf)
+ *   [["a", "b"], ...] → 2  (multi-section / whole book)
+ */
+export function textDepth(value) {
+  if (typeof value === 'string') return 0;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return 1;
+    return 1 + textDepth(value[0]);
+  }
+  return 0;
+}
+
+/**
+ * Convert a 0-indexed daf/amud position to Hebrew label.
+ *   0 → "ב ע״א", 1 → "ב ע״ב", 2 → "ג ע״א", ...
+ */
+export function talmudHeLabel(index) {
+  const dafNum = 2 + Math.floor(index / 2);
+  const sideHe = index % 2 === 0 ? 'ע״א' : 'ע״ב';
+  return `${numToHebrewLetters(dafNum)} ${sideHe}`;
+}
+
+/** Convert a 0-indexed daf/amud position to Sefaria's English suffix: "2a", "2b". */
+export function talmudEnLabel(index) {
+  const dafNum = 2 + Math.floor(index / 2);
+  const side = index % 2 === 0 ? 'a' : 'b';
+  return `${dafNum}${side}`;
+}
+
+/**
+ * Construct the Hebrew label for one sub-section, given the parent's
+ * addressTypes/heSectionNames at that depth and the 0-based index.
+ */
+export function subSectionHeLabel(addressType, heSectionName, index) {
+  if (addressType === 'Talmud') return talmudHeLabel(index);
+  const name = heSectionName || 'חלק';
+  return `${name} ${numToHebrewLetters(index + 1)}`;
+}
+
+/**
+ * Construct a sub-ref string that Sefaria can re-resolve.
+ *   parent = "Genesis"     , addressType="Perek"   → "Genesis 5"
+ *   parent = "Genesis 1"   , addressType="Pasuk"   → "Genesis 1:5"
+ *   parent = "Sukkah"      , addressType="Talmud"  → "Sukkah 4a"
+ *   parent = "Sukkah 2a"   , addressType="Integer" → "Sukkah 2a:5"
+ * Heuristic: the *first* address inside a book is space-separated, all
+ * deeper ones are colon-separated.
+ */
+export function buildSubRef(parentRef, addressType, parentDepth, index) {
+  let value;
+  if (addressType === 'Talmud') value = talmudEnLabel(index);
+  else value = String(index + 1);
+  const sep = parentDepth >= 1 ? ':' : ' ';
+  return `${parentRef}${sep}${value}`;
+}
+
+/**
+ * Crude integer-to-Hebrew-letters used for chapter/verse labels.
+ * Good enough for 1..999 which covers everything in Tanakh & Talmud.
+ */
+export function numToHebrewLetters(n) {
+  if (!Number.isFinite(n) || n <= 0) return String(n);
+  const HUNDREDS = ['', 'ק', 'ר', 'ש', 'ת', 'תק', 'תר', 'תש', 'תת', 'תתק'];
+  const TENS     = ['', 'י', 'כ', 'ל', 'מ', 'נ', 'ס', 'ע', 'פ', 'צ'];
+  const ONES     = ['', 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט'];
+  let num = Math.floor(n);
+  let out = '';
+  if (num >= 1000) { out += numToHebrewLetters(Math.floor(num / 1000)) + "'"; num %= 1000; }
+  out += HUNDREDS[Math.floor(num / 100)] || '';
+  num %= 100;
+  // The combinations 15 & 16 are written ט"ו / ט"ז to avoid spelling Hashem.
+  if (num === 15) out += 'טו';
+  else if (num === 16) out += 'טז';
+  else {
+    out += TENS[Math.floor(num / 10)] || '';
+    out += ONES[num % 10] || '';
+  }
+  // Add gershayim/geresh for traditional rendering
+  if (out.length > 1) {
+    out = out.slice(0, -1) + '״' + out.slice(-1);
+  } else if (out.length === 1) {
+    out = out + '׳';
+  }
+  return out;
+}

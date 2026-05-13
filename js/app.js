@@ -184,7 +184,6 @@ function renderLibrary() {
 const settingsModal = $('[data-role="settings-modal"]');
 const fontSel = $('[data-role="setting-font"]');
 const fontSizeSel = $('[data-role="setting-font-size"]');
-const pageBreakChk = $('[data-role="setting-page-break"]');
 const numberingChk = $('[data-role="setting-numbering"]');
 const marginsSel = $('[data-role="setting-margins"]');
 const printModeSel = $('[data-role="setting-print-mode"]');
@@ -193,7 +192,6 @@ function readSettingsFromForm() {
   return {
     font: fontSel.value,
     fontSize: parseInt(fontSizeSel.value, 10) || 14,
-    pageBreakPerSource: pageBreakChk.checked,
     showNumbering: numberingChk.checked,
     margins: marginsSel.value,
     printMode: printModeSel.value,
@@ -204,7 +202,6 @@ function syncSettingsForm(settings) {
   const s = { ...defaultSettings(), ...(settings || {}) };
   fontSel.value = s.font;
   fontSizeSel.value = String(s.fontSize);
-  pageBreakChk.checked = !!s.pageBreakPerSource;
   numberingChk.checked = s.showNumbering !== false;
   marginsSel.value = s.margins;
   printModeSel.value = s.printMode;
@@ -221,7 +218,7 @@ function closeSettings() {
 }
 
 // Live-apply settings on change (no separate "save" button needed).
-for (const ctrl of [fontSel, fontSizeSel, pageBreakChk, numberingChk, marginsSel, printModeSel]) {
+for (const ctrl of [fontSel, fontSizeSel, numberingChk, marginsSel, printModeSel]) {
   ctrl.addEventListener('change', () => {
     const next = readSettingsFromForm();
     sheet.updateSettings(next);
