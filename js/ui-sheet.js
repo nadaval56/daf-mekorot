@@ -24,17 +24,32 @@ export function initSheetUI({ sheet, showToast }) {
   const pushTitle = debounce((val) => sheet.setTitle(val), 150);
   titleInput.addEventListener('input', () => pushTitle(titleInput.value));
 
-  // בס"ד / Hashem-prefix dropdown — button + small menu.
+  // בס"ד / Hashem-prefix dropdown — button + small menu. The menu is
+  // position: fixed and we compute coordinates relative to the button
+  // because the surrounding .panel has overflow: hidden which would
+  // otherwise clip an absolute-positioned dropdown.
   if (headerRightButton && headerRightMenu) {
+    const openMenu = () => {
+      const rect = headerRightButton.getBoundingClientRect();
+      headerRightMenu.style.top  = `${rect.bottom + 4}px`;
+      headerRightMenu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+      headerRightMenu.style.left  = 'auto';
+      headerRightMenu.hidden = false;
+    };
+    const closeMenu = () => { headerRightMenu.hidden = true; };
+
     headerRightButton.addEventListener('click', (e) => {
       e.stopPropagation();
-      headerRightMenu.hidden = !headerRightMenu.hidden;
+      if (headerRightMenu.hidden) openMenu();
+      else closeMenu();
     });
     document.addEventListener('click', (e) => {
       if (!headerRightMenu.contains(e.target) && e.target !== headerRightButton) {
-        headerRightMenu.hidden = true;
+        closeMenu();
       }
     });
+    window.addEventListener('resize',  closeMenu);
+    window.addEventListener('scroll',  closeMenu, true);
     headerRightMenu.addEventListener('click', (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
@@ -46,7 +61,7 @@ export function initSheetUI({ sheet, showToast }) {
       } else if ('value' in btn.dataset) {
         sheet.setHeader('right', btn.dataset.value || '');
       }
-      headerRightMenu.hidden = true;
+      closeMenu();
     });
   }
 

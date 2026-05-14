@@ -199,9 +199,9 @@ body {
   font-size: 0.7em;
 }
 .sheet-header-chip__menu {
-  position: absolute;
-  top: calc(100% + 2px);
-  right: 0;
+  /* `position: fixed` (with coordinates computed in JS) escapes the
+     panel's `overflow: hidden` that was clipping us. */
+  position: fixed;
   margin: 0;
   padding: 0.25rem;
   list-style: none;
@@ -209,7 +209,7 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   box-shadow: var(--shadow-pop);
-  z-index: 20;
+  z-index: 1000;
   min-width: 8rem;
 }
 .sheet-header-chip__menu li button {

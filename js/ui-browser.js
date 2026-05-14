@@ -101,9 +101,11 @@ function curateTopLevelCategories() {
   };
 
   // Tanakh — strict 24-book list (only Tanakh/Torah|Prophets|Writings/<book>).
+  // Book leaves have pathEn = [<top>, <division>] (parent path only —
+  // the book's own title is NOT in pathEn), so the length is 2 not 3.
   const TANAKH_DIV = new Set(['Torah', 'Prophets', 'Writings']);
   const tanakhBooks = tocBooks.filter((b) =>
-    b.pathEn[0] === 'Tanakh' && TANAKH_DIV.has(b.pathEn[1]) && b.pathEn.length === 3
+    b.pathEn[0] === 'Tanakh' && TANAKH_DIV.has(b.pathEn[1]) && b.pathEn.length === 2
   );
   set('תנ"ך', 'Tanakh', tanakhBooks);
   set('תנ״ך', null, tanakhBooks);
@@ -123,7 +125,7 @@ function curateTopLevelCategories() {
   const mishnahBooks = tocBooks.filter((b) =>
     b.pathEn[0] === 'Mishnah' &&
     MISHNAH_SEDERS.has(b.pathEn[1]) &&
-    b.pathEn.length === 3
+    b.pathEn.length === 2
   );
   set('משנה', 'Mishnah', mishnahBooks);
 
@@ -506,12 +508,9 @@ export function initBrowser({ onAddSource, showToast }) {
    *  flat list. */
   function renderHierarchicalCategoryNav(categoryLabel, books, prevCrumbs = []) {
     const varDepth = findVariationDepth(books);
-    // Heuristic: if the books share their entire prefix or vary only by
-    // the LAST path segment (i.e. they're all leaf siblings of the
-    // current category), render them as a flat list of clickable books.
-    const allSiblingsAtLeaf = books.every((b) => b.pathEn.length === books[0].pathEn.length)
-      && varDepth >= 0 && varDepth === books[0].pathEn.length - 1;
-    if (varDepth < 0 || allSiblingsAtLeaf || books.length <= 6) {
+    // Show a flat list when there's nothing useful to group by (no
+    // variation) or when the set is small enough to scan directly.
+    if (varDepth < 0 || books.length <= 6) {
       renderFlatCategoryNav(categoryLabel, books, prevCrumbs[0]);
       return;
     }
