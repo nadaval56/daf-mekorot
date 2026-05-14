@@ -492,7 +492,10 @@ export function talmudEnLabel(index) {
 export function subSectionHeLabel(addressType, heSectionName, index) {
   if (addressType === 'Talmud') return talmudHeLabel(index);
   const name = heSectionName || 'חלק';
-  return `${name} ${numToHebrewLetters(index + 1)}`;
+  // Strip gershayim from single-letter Hebrew numerals — "משנה א" reads
+  // cleaner than "משנה א׳"; multi-letter numerals keep gershayim
+  // (e.g. "משנה י״ב") via presentHebrewLetters.
+  return `${name} ${presentHebrewLetters(numToHebrewLetters(index + 1))}`;
 }
 
 /**

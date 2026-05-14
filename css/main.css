@@ -427,6 +427,49 @@ body {
   flex-wrap: wrap;
 }
 
+.result-card__head {
+  position: relative;
+}
+.result-card__nav {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  justify-content: flex-end;
+}
+.result-card__nav:empty { display: none; }
+
+/* ----- Block view (Tanakh chapter / Bavli daf+amud) ----- */
+.block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.block-body__line {
+  display: block;
+  line-height: 1.85;
+}
+.block-body__num {
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-inline-end: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.block-body__amud {
+  margin-bottom: 0.6rem;
+  line-height: 1.85;
+}
+.block-body__amud-label {
+  display: inline-block;
+  font-weight: 700;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: 4px;
+  padding: 0.05rem 0.4rem;
+  margin-inline-end: 0.35rem;
+  font-size: 0.85rem;
+}
+.block-body__text { font-family: var(--font-frank); }
+
 /* ----- Breadcrumb ----- */
 .crumbs {
   display: flex;

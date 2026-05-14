@@ -4,9 +4,33 @@
 // selection-based partial add, and a related-sources panel under each
 // leaf segment (commentaries, midrash, etc., grouped by category).
 
-import { $, el, debounce, truncate, textDepth, buildSubRef, subSectionHeLabel } from './utils.js';
+import { $, el, debounce, truncate, textDepth, buildSubRef, subSectionHeLabel,
+         numToHebrewLetters, presentHebrewLetters } from './utils.js';
 import { cleanSefariaText, flattenSefariaText, formatMarehMakom, parseHeRef, buildSegmentCitation } from './utils.js';
 import { lookupName, fetchText, fetchRelated, SefariaError } from './sefaria-api.js';
+
+/**
+ * Hebrew name for the segmentation unit at depth N (1 = bottom-most leaf
+ * unit, 2 = one level up, ...). Used as a fallback when Sefaria's response
+ * doesn't surface heSectionNames — so a Tanakh book listing chapters
+ * defaults to "פרק", a Mishnah perek listing segments defaults to "משנה",
+ * etc., never to a hard-coded "פסוק".
+ */
+function defaultSegNameFor(parsed, depth = 1) {
+  const tables = {
+    tanakh:     ['פסוק', 'פרק'],
+    mishnah:    ['משנה', 'פרק'],
+    bavli:      ['שורה', 'עמוד', 'דף'],
+    yerushalmi: ['הלכה', 'פרק'],
+    rambam:     ['הלכה', 'פרק'],
+    shulchan:   ['סעיף', 'סימן'],
+    tur:        ['סעיף', 'סימן'],
+  };
+  if (!parsed) return 'חלק';
+  const table = tables[parsed.kind];
+  if (!table) return 'חלק';
+  return table[depth - 1] || table[table.length - 1] || 'חלק';
+}
 
 /**
  * Pick the best Hebrew display title from a Sefaria text response or
@@ -147,7 +171,9 @@ export function initBrowser({ onAddSource, showToast }) {
     }
   }
 
-  /** Top-level render — chooses leaf vs section vs multi-section. */
+  /** Top-level render — chooses leaf / block / segments / nav-grid by both
+   *  text depth AND citation kind (so a Tanakh chapter renders as a whole
+   *  block while a Mishnah chapter splits into mishnayot). */
   function renderResult(result) {
     emptyBox.hidden = true;
     resultBox.hidden = false;
@@ -155,7 +181,36 @@ export function initBrowser({ onAddSource, showToast }) {
 
     resultBox.appendChild(renderBreadcrumb(result));
 
+    const parsed = parseHeRef(result.heRef, result.heCategories);
     const depth = textDepth(result.hebrew);
+
+    // Bavli: book → daf grid; daf → whole-daf block (both amudim joined);
+    // amud → whole-amud block; line → leaf.
+    if (parsed?.kind === 'bavli') {
+      if (parsed.levels.length === 0 && depth >= 2) {
+        resultBox.appendChild(renderBavliBookNav(result));
+        return;
+      }
+      if (parsed.levels.length === 1) {
+        resultBox.appendChild(renderBlockView(result, { mode: 'bavli-daf' }));
+        return;
+      }
+      if (parsed.levels.length === 2 && depth >= 1) {
+        resultBox.appendChild(renderBlockView(result, { mode: 'bavli-amud' }));
+        return;
+      }
+      // levels.length >= 3 or depth 0 → leaf
+      resultBox.appendChild(renderLeaf(result));
+      return;
+    }
+
+    // Tanakh chapter → whole-chapter block with verse numbers inline.
+    if (parsed?.kind === 'tanakh' && parsed.levels.length === 1 && depth >= 1) {
+      resultBox.appendChild(renderBlockView(result, { mode: 'tanakh-chapter' }));
+      return;
+    }
+
+    // Everything else: depth-driven.
     if (depth === 0) {
       resultBox.appendChild(renderLeaf(result));
     } else if (depth === 1) {
@@ -209,27 +264,43 @@ export function initBrowser({ onAddSource, showToast }) {
     return crumbs;
   }
 
-  /* -------------------- leaf view -------------------- */
+  /* -------------------- shared head/body/actions builders -------------------- */
 
-  function renderLeaf(result) {
-    const heText = cleanSefariaText(flattenSefariaText(result.hebrew));
+  /** Card header: title + category + prev/next navigation arrows. */
+  function buildCardHead(result) {
     const title = displayTitleFor(result);
     const category = (result.heCategories || []).join(' • ');
-
-    const head = el('div', { class: 'result-card__head' }, [
+    const nav = el('div', { class: 'result-card__nav' });
+    // Hebrew RTL: visually the "next" button sits on the LEFT (start of reading),
+    // "prev" on the RIGHT. We use explicit text + arrows so direction is clear.
+    if (result.prev) {
+      nav.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn--ghost btn--small',
+        text: '→ הקודם',
+        title: result.prev,
+        onclick: () => loadRef(result.prev),
+      }));
+    }
+    if (result.next) {
+      nav.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn--ghost btn--small',
+        text: 'הבא ←',
+        title: result.next,
+        onclick: () => loadRef(result.next),
+      }));
+    }
+    return el('div', { class: 'result-card__head' }, [
       el('div', { class: 'result-card__title mixed-content', text: title }),
       el('div', { class: 'result-card__category', text: category }),
+      nav,
     ]);
+  }
 
-    const body = el('div', {
-      class: 'result-card__body',
-      dataset: { selectable: 'true' },
-      text: heText || '— אין טקסט עברי זמין למקור זה —',
-    });
-
-    // Floating "add selection" affordance — appears whenever the user
-    // has selected text inside this body element.
-    const selectionBar = el('div', { class: 'selection-bar', hidden: true }, [
+  /** Selection bar — shown whenever the user highlights text in `body`. */
+  function buildSelectionBar(body, title, result) {
+    const bar = el('div', { class: 'selection-bar', hidden: true }, [
       el('span', { class: 'selection-bar__hint', text: 'נבחר טקסט:' }),
       el('button', {
         type: 'button',
@@ -247,55 +318,159 @@ export function initBrowser({ onAddSource, showToast }) {
           });
           showToast('הקטע הנבחר נוסף לדף.');
           sel.removeAllRanges();
-          selectionBar.hidden = true;
+          bar.hidden = true;
         },
       }),
     ]);
-    body.addEventListener('mouseup', () => updateSelectionBar(body, selectionBar));
-    body.addEventListener('keyup', () => updateSelectionBar(body, selectionBar));
+    body.dataset.selectable = 'true';
+    body.addEventListener('mouseup', () => updateSelectionBar(body, bar));
+    body.addEventListener('keyup', () => updateSelectionBar(body, bar));
+    return bar;
+  }
 
+  /** Bottom action row: add + copy. */
+  function buildActions(title, text, result) {
     const addBtn = el('button', {
       type: 'button',
       class: 'btn btn--primary btn--small',
       text: '← הוסף לדף',
       onclick: () => {
-        if (!heText) { showToast('אין טקסט להוסיף.', 'error'); return; }
+        if (!text) { showToast('אין טקסט להוסיף.', 'error'); return; }
         onAddSource({
           title,
-          text: heText,
+          text,
           sefariaRef: result.ref,
           sefariaHeRef: result.heRef,
         });
         showToast(`נוסף לדף: ${truncate(title, 40)}`);
       },
     });
-
     const copyBtn = el('button', {
       type: 'button',
       class: 'btn btn--ghost btn--small',
       text: '📋 העתק',
       onclick: async () => {
         try {
-          await navigator.clipboard.writeText(`${title}\n\n${heText}`);
+          await navigator.clipboard.writeText(`${title}\n\n${text}`);
           showToast('הועתק ללוח.');
         } catch { showToast('העתקה נכשלה.', 'error'); }
       },
     });
+    return el('div', { class: 'result-card__actions' }, [addBtn, copyBtn]);
+  }
 
-    const sefariaLink = el('a', {
-      href: `https://www.sefaria.org/${encodeURI(result.ref)}`,
-      target: '_blank', rel: 'noopener',
-      class: 'btn btn--ghost btn--small',
-      text: '↗ פתח בספריא',
+  function buildRelatedPanel(ref) {
+    const panel = el('div', { class: 'related', dataset: { state: 'idle' } });
+    panel.appendChild(el('div', { class: 'related__head', text: 'טוען מקורות מקושרים…' }));
+    loadRelatedInto(ref, panel);
+    return panel;
+  }
+
+  /* -------------------- leaf view -------------------- */
+
+  function renderLeaf(result) {
+    const heText = cleanSefariaText(flattenSefariaText(result.hebrew));
+    const title = displayTitleFor(result);
+    const head = buildCardHead(result);
+    const body = el('div', {
+      class: 'result-card__body',
+      text: heText || '— אין טקסט עברי זמין למקור זה —',
     });
-
-    const actions = el('div', { class: 'result-card__actions' }, [addBtn, copyBtn, sefariaLink]);
-
-    const relatedPanel = el('div', { class: 'related', dataset: { state: 'idle' } });
-    relatedPanel.appendChild(el('div', { class: 'related__head', text: 'טוען מקורות מקושרים…' }));
-    loadRelatedInto(result.ref, relatedPanel);
-
+    const selectionBar = buildSelectionBar(body, title, result);
+    const actions = buildActions(title, heText, result);
+    const relatedPanel = buildRelatedPanel(result.ref);
     return el('div', { class: 'result-card' }, [head, body, selectionBar, actions, relatedPanel]);
+  }
+
+  /* -------------------- block view (Tanakh chapter, Bavli amud/daf) -------------------- */
+
+  function renderBlockView(result, { mode } = {}) {
+    const title = displayTitleFor(result);
+    const head = buildCardHead(result);
+    const segments = result.hebrew;
+
+    const body = el('div', { class: 'result-card__body block-body' });
+    let plainText = '';
+
+    if (mode === 'tanakh-chapter') {
+      const verses = (Array.isArray(segments) ? segments : []).map((s, i) => ({
+        label: presentHebrewLetters(numToHebrewLetters(i + 1)),
+        text: cleanSefariaText(flattenSefariaText(s)),
+      })).filter((v) => v.text);
+      for (const v of verses) {
+        body.appendChild(el('div', { class: 'block-body__line' }, [
+          el('span', { class: 'block-body__num', text: v.label }),
+          el('span', { class: 'block-body__text', text: ' ' + v.text }),
+        ]));
+      }
+      plainText = verses.map((v) => `${v.label} ${v.text}`).join('\n');
+    } else if (mode === 'bavli-daf') {
+      // segments may be depth-2 ([amudA lines, amudB lines]) for "Sukkah 2",
+      // or depth-1 if Sefaria returned the daf flattened. Handle both.
+      const arr = Array.isArray(segments) ? segments : [];
+      const isTwoAmudim = arr.length > 0 && Array.isArray(arr[0]);
+      const amudA = isTwoAmudim ? (arr[0] || []) : arr;
+      const amudB = isTwoAmudim ? (arr[1] || []) : [];
+      const textA = cleanSefariaText(amudA.map(flattenSefariaText).join(' '));
+      const textB = cleanSefariaText(amudB.map(flattenSefariaText).join(' '));
+      if (textA) {
+        body.appendChild(el('div', { class: 'block-body__amud' }, [
+          el('span', { class: 'block-body__amud-label', text: 'עמוד א' }),
+          el('span', { class: 'block-body__text', text: ' ' + textA }),
+        ]));
+      }
+      if (textB) {
+        body.appendChild(el('div', { class: 'block-body__amud' }, [
+          el('span', { class: 'block-body__amud-label', text: 'עמוד ב' }),
+          el('span', { class: 'block-body__text', text: ' ' + textB }),
+        ]));
+      }
+      plainText = [textA && `עמוד א: ${textA}`, textB && `עמוד ב: ${textB}`].filter(Boolean).join('\n\n');
+    } else if (mode === 'bavli-amud') {
+      // segments is depth-1: array of lines. Concatenate to one paragraph.
+      const lines = Array.isArray(segments) ? segments : [];
+      plainText = cleanSefariaText(lines.map(flattenSefariaText).join(' '));
+      body.textContent = plainText || '— אין טקסט עברי זמין —';
+    } else {
+      plainText = cleanSefariaText(flattenSefariaText(segments));
+      body.textContent = plainText || '— אין טקסט עברי זמין —';
+    }
+
+    const selectionBar = buildSelectionBar(body, title, result);
+    const actions = buildActions(title, plainText, result);
+    const relatedPanel = buildRelatedPanel(result.ref);
+    return el('div', { class: 'result-card' }, [head, body, selectionBar, actions, relatedPanel]);
+  }
+
+  /* -------------------- Bavli book nav (daf-level grid) -------------------- */
+
+  function renderBavliBookNav(result) {
+    const arr = Array.isArray(result.hebrew) ? result.hebrew : [];
+    // Talmud Bavli always starts at daf 2 (the first daf is conventionally
+    // a title page). arr has one entry per AMUD; group pairs into dapim.
+    const numDapim = Math.ceil(arr.length / 2);
+    const head = buildCardHead(result);
+    const hint = el('div', { class: 'browser__hint', text: 'בחר דף:' });
+    const grid = el('div', { class: 'nav-grid' });
+    for (let i = 0; i < numDapim; i++) {
+      // Skip if both amudim are empty (rare).
+      const hasA = arr[i * 2] && (Array.isArray(arr[i * 2]) ? arr[i * 2].length : true);
+      const hasB = arr[i * 2 + 1] && (Array.isArray(arr[i * 2 + 1]) ? arr[i * 2 + 1].length : true);
+      if (!hasA && !hasB) continue;
+      const dafNum = 2 + i;
+      const dafHe = presentHebrewLetters(numToHebrewLetters(dafNum));
+      const subRef = `${result.ref} ${dafNum}`;
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: `דף ${dafHe}`,
+        title: subRef,
+        onclick: () => loadRef(subRef, {
+          drillFrom: { ref: result.ref, heRef: result.heRef },
+        }),
+      }));
+    }
+    return el('div', { class: 'result-card' }, [head, hint, grid]);
   }
 
   function updateSelectionBar(scopeEl, bar) {
@@ -314,8 +489,8 @@ export function initBrowser({ onAddSource, showToast }) {
     const segments = Array.isArray(result.hebrew) ? result.hebrew : [];
     const title = displayTitleFor(result);
     const parsed = parseHeRef(result.heRef, result.heCategories);
-    const heSectionName = (result.heSectionNames || [])[result.heSectionNames?.length - 1] || 'פסוק';
-    const lastAddressType = (result.addressTypes || [])[result.addressTypes?.length - 1] || 'Integer';
+    const heSectionName = (result.heSectionNames || []).slice(-1)[0] || defaultSegNameFor(parsed);
+    const lastAddressType = (result.addressTypes || []).slice(-1)[0] || 'Integer';
 
     // Combined text (entire section) for the "add all" button.
     const fullText = segments
@@ -323,10 +498,7 @@ export function initBrowser({ onAddSource, showToast }) {
       .filter(Boolean)
       .join('\n');
 
-    const head = el('div', { class: 'result-card__head' }, [
-      el('div', { class: 'result-card__title mixed-content', text: title }),
-      el('div', { class: 'result-card__category', text: (result.heCategories || []).join(' • ') }),
-    ]);
+    const head = buildCardHead(result);
 
     const addAllBtn = el('button', {
       type: 'button',
@@ -392,22 +564,15 @@ export function initBrowser({ onAddSource, showToast }) {
 
   function renderMultiSection(result, depth) {
     const arr = Array.isArray(result.hebrew) ? result.hebrew : [];
-    const title = displayTitleFor(result);
+    const parsed = parseHeRef(result.heRef, result.heCategories);
     const sectionNameIdx = (result.heSectionNames?.length || 0) - depth;
-    const heSectionName = (result.heSectionNames || [])[sectionNameIdx] || 'חלק';
+    const heSectionName = (result.heSectionNames || [])[sectionNameIdx] || defaultSegNameFor(parsed, depth);
     const addressType = (result.addressTypes || [])[sectionNameIdx] || 'Integer';
 
-    const head = el('div', { class: 'result-card__head' }, [
-      el('div', { class: 'result-card__title mixed-content', text: title }),
-      el('div', {
-        class: 'result-card__category',
-        text: `${(result.heCategories || []).join(' • ')} • ${arr.length} ${heSectionName}`,
-      }),
-    ]);
-
+    const head = buildCardHead(result);
     const hint = el('div', {
       class: 'browser__hint',
-      text: 'בחר חלק כדי לצפות / להוסיף:',
+      text: `בחר ${heSectionName} כדי לצפות / להוסיף:`,
     });
 
     const grid = el('div', { class: 'nav-grid' });

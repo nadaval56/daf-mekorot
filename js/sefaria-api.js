@@ -109,11 +109,21 @@ export async function fetchText(ref, { signal } = {}) {
     sectionNames: data?.sectionNames || [],
     heSectionNames: data?.heSectionNames || [],
     addressTypes: data?.addressTypes || [],
+    next: refOf(data?.next),
+    prev: refOf(data?.prev),
     hebrew: heVersion?.text ?? data?.he ?? '',
     english: enVersion?.text ?? data?.text ?? '',
     primaryCategory: data?.primary_category || (data?.categories || [])[0] || '',
     raw: data,
   };
+}
+
+/** Sefaria's next/prev fields are sometimes a string, sometimes an object. */
+function refOf(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return value.ref || value.url || null;
+  return null;
 }
 
 /**
