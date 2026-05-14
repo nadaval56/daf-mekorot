@@ -613,7 +613,14 @@ export function initBrowser({ onAddSource, showToast }) {
         onclick: isCategory
           ? () => renderTreeNode(child, null, { onClick: () => renderTreeNode(node, label, prevCrumb) })
           : () => loadRef(child.title || child.firstSection, {
-              drillFrom: { ref: '__category__', heRef: heLabel, _isCategory: true, _node: node },
+              drillFrom: {
+                ref: '__category__',
+                heRef: heLabel,
+                _isCategory: true,
+                _node: node,
+                _label: label,
+                _prevCrumb: prevCrumb,  // preserve upstream back-button chain
+              },
             }),
       }));
     }
@@ -937,9 +944,16 @@ export function initBrowser({ onAddSource, showToast }) {
   function reloadStackEntry(entry) {
     if (!entry) return;
     if (entry._isCategory) {
-      if (entry._node) renderTreeNode(entry._node, entry.heRef);
-      else if (entry._books) renderCategoryNav(entry.heRef, entry._books);
-      else if (typeof entry._onBack === 'function') entry._onBack();
+      if (entry._node) {
+        // Pass the upstream prevCrumb back to renderTreeNode so the
+        // "→ חזרה" button keeps appearing at every level above us
+        // until we reach the top of the tree.
+        renderTreeNode(entry._node, entry._label ?? entry.heRef, entry._prevCrumb ?? null);
+      } else if (entry._books) {
+        renderCategoryNav(entry.heRef, entry._books);
+      } else if (typeof entry._onBack === 'function') {
+        entry._onBack();
+      }
     } else {
       loadRef(entry.ref);
     }
