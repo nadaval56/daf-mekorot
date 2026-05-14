@@ -488,18 +488,20 @@ export function initBrowser({ onAddSource, showToast }) {
 
   function renderBavliBookNav(result) {
     const arr = Array.isArray(result.hebrew) ? result.hebrew : [];
-    // Talmud Bavli always starts at daf 2 (the first daf is conventionally
-    // a title page). arr has one entry per AMUD; group pairs into dapim.
+    // Sefaria stores Bavli arrays with placeholders for daf 1 at indices
+    // 0 (="1a") and 1 (="1b") — the page traditionally has no content in
+    // Bavli (the tractate begins at daf 2). So daf N's amudim sit at
+    // arr[(N-1)*2] and arr[(N-1)*2 + 1]; daf 1's entries are empty and
+    // filtered out by the hasA/hasB check below.
     const numDapim = Math.ceil(arr.length / 2);
     const head = buildCardHead(result);
     const hint = el('div', { class: 'browser__hint', text: 'בחר דף:' });
     const grid = el('div', { class: 'nav-grid' });
     for (let i = 0; i < numDapim; i++) {
-      // Skip if both amudim are empty (rare).
       const hasA = arr[i * 2] && (Array.isArray(arr[i * 2]) ? arr[i * 2].length : true);
       const hasB = arr[i * 2 + 1] && (Array.isArray(arr[i * 2 + 1]) ? arr[i * 2 + 1].length : true);
       if (!hasA && !hasB) continue;
-      const dafNum = 2 + i;
+      const dafNum = i + 1;
       const dafHe = presentHebrewLetters(numToHebrewLetters(dafNum));
       const subRef = `${result.ref} ${dafNum}`;
       grid.appendChild(el('button', {
