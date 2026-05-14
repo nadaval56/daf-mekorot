@@ -843,14 +843,28 @@ export function initBrowser({ onAddSource, showToast }) {
       const enTitle = node.title || '';
       if (!enTitle) continue;
       const subRef = `${bookRef}, ${enTitle}`;
+      // If the sub-node is ITSELF a SchemaNode (carries its own `nodes`),
+      // recurse into renderComplexBookIndex with the sub-node directly.
+      // Going through loadRef instead leads to an infinite loop on books
+      // like Sifra — Sefaria's `/api/v2/index/<parent>, <child>` ignores
+      // the trailing part and returns the parent index again, so we'd
+      // re-render the same cubes and eventually build a malformed ref
+      // (e.g. "Sifra, Tzav, Shemini") that 400s.
+      const hasSubNodes = Array.isArray(node.nodes) && node.nodes.length > 0;
       grid.appendChild(el('button', {
         type: 'button',
         class: 'nav-grid__item mixed-content',
         text: heTitle,
         title: subRef,
-        onclick: () => loadRef(subRef, {
-          drillFrom: { ref: bookRef, heRef: idx.heTitle || bookRef },
-        }),
+        onclick: hasSubNodes
+          ? () => renderComplexBookIndex(subRef, {
+              heTitle, title: subRef,
+              nodes: node.nodes,
+              categories: idx.categories,
+            })
+          : () => loadRef(subRef, {
+              drillFrom: { ref: bookRef, heRef: idx.heTitle || bookRef },
+            }),
       }));
     }
     resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));

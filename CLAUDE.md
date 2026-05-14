@@ -1,534 +1,272 @@
-# דף מקורות - מערכת לבניית דפי מקורות עם אינטגרציה לספריא
+# דף מקורות — מדריך פיתוח עבור Claude
 
-> מדריך פיתוח עבור Claude Code  
-> פרויקט: `daf-mekorot` (שם זמני - לשנות לפי בחירה)  
-> אירוח: GitHub Pages
-
----
-
-## 📋 סקירה כללית
-
-מערכת web-based לבניית "דפי מקורות" - אסופות מאורגנות של מקורות יהודיים שמשמשות מורי שיעורי שבת ומחנכים בחינוך תורני. המערכת מאפשרת:
-
-1. דפדוף וחיפוש במאגר ספריא בעברית
-2. הוספת מקורות לדף נבנה עם מטא-דאטה אוטומטי (מראה מקום)
-3. הוספת תיבות טקסט עצמאיות (לטקסטים שלא בספריא או הערות אישיות)
-4. עריכה, סידור, ועיצוב המקורות
-5. ייצוא ל-PDF להדפסה מקצועית
-6. ספריית דפים שמורים בדפדפן
-
-**קהל יעד:** מורי שיעורי שבת, מחנכים בחינוך תורני, מכינים דפי שיעור להדפסה.
-
-**עיקרון מנחה:** דף מודפס יפה וקריא, עברית RTL מושלמת, זרימת עבודה מהירה מצפייה אל בנייה.
+> **קרא את הקובץ הזה לפני שאתה משנה קוד.** הוא מתעדכן ושומר על הלקחים שהצטברו תוך כדי עבודה.
+> פרויקט: `daf-mekorot` • אירוח: GitHub Pages (`main` → אוטומטי) • ענף פיתוח: `claude/torah-resources-page-Iqkrw`.
 
 ---
 
-## 🛠 מחסנית טכנולוגית
+## 1. סקירה כללית
 
-- **Frontend בלבד:** HTML5, CSS3, JavaScript (Vanilla, ללא frameworks)
-- **אירוח:** GitHub Pages (static, ללא backend)
-- **API חיצוני:** Sefaria API ([developers.sefaria.org](https://developers.sefaria.org/))
-- **שמירה:** localStorage בלבד
-- **פונטים:** Google Fonts (Hebrew web fonts)
+כלי web סטטי לבניית **דפי מקורות** לשיעורי תורה, עם אינטגרציה ל-API של [ספריא](https://www.sefaria.org). קהל היעד: מורי שיעורי שבת ומחנכים בחינוך תורני.
 
-**למה Vanilla JS?** פשטות, ביצועים על GitHub Pages, אין תלות ב-build process, קל לעריכה ידנית, מתאים לעבודה איטרטיבית עם Claude Code.
+עיקרון מנחה: דף מודפס יפה וקריא, RTL מושלם, זרימת עבודה מהירה מצפייה אל בנייה. **שום build process** — HTML/CSS/Vanilla JS בלבד.
 
 ---
 
-## 🏗 ארכיטקטורה
+## 2. מחסנית טכנולוגית
 
-### תצוגה ראשית - Split View
+- **Frontend בלבד:** HTML5, CSS3, JS Vanilla עם ES modules.
+- **API:** Sefaria public API (CORS פתוח). אנדפויינטים בשימוש:
+  - `/api/v3/texts/<ref>?version=hebrew&version=english&return_format=text_only` — טקסט.
+  - `/api/v2/index/<title>` — schema של ספר (לטיפול ב-complex schema).
+  - `/api/related/<ref>` — מקורות מקושרים.
+  - `/api/name/<query>` — autocomplete.
+  - `/api/index` — עץ ה-TOC המלא (נטען פעם אחת ב-init).
+- **שמירה:** `localStorage` בלבד.
+- **פונטים:** Google Fonts (Frank Ruhl Libre, David Libre, Bellefair, Heebo).
+- **בניית עץ ניווט:** מבוסס literally על `/api/index` של ספריא, **לא** על קיבוץ heuristic של ספרים שטוחים. ראה סעיף 4.
 
-```
-+----------------------+----------------------+
-|                      |                      |
-|   דף המקורות         |   דפדפן ספריא        |
-|   (פאנל ימני)         |   (פאנל שמאלי)       |
-|                      |                      |
-|   - כותרת השיעור      |   - חיפוש/דפדוף       |
-|   - רשימת מקורות      |   - הצגת פסוק/מקור   |
-|   - תיבה עצמאית       |   - מקורות מקושרים   |
-|   - הגדרות עיצוב      |   - כפתורי "הוסף ←" |
-|   - ייצוא/שמירה       |                      |
-|                      |                      |
-+----------------------+----------------------+
-```
+---
 
-### מבנה תיקיות
+## 3. ארכיטקטורה ומבנה קבצים
+
+תצוגת ראשי = **Split View** דו-פאנלי. ימני = דף המקורות (`ui-sheet.js`). שמאלי = דפדפן ספריא (`ui-browser.js`).
 
 ```
 /
-├── index.html                # נקודת כניסה
+├── index.html                # שלד DOM
 ├── css/
-│   ├── main.css             # סגנון ראשי, layout
+│   ├── main.css             # layout + עיצוב מסך
 │   ├── rtl.css              # התאמות RTL
-│   ├── print.css            # @media print לייצוא PDF
-│   └── fonts.css            # הגדרות פונטים
+│   ├── print.css            # @media print (PDF)
+│   └── fonts.css            # פונטים
 ├── js/
-│   ├── app.js               # אתחול וניהול ראשי
-│   ├── sefaria-api.js       # client ל-API של ספריא
-│   ├── sources.js           # ניהול מקורות (CRUD על הדף)
+│   ├── app.js               # אתחול, wiring, modals (הגדרות + ספרייה)
+│   ├── sefaria-api.js       # client + cache + complex-schema fallback
+│   ├── sources.js           # מודל Sheet (CRUD), observable
 │   ├── storage.js           # localStorage layer
-│   ├── ui-sheet.js          # ממשק דף המקורות (פאנל ימני)
-│   ├── ui-browser.js        # ממשק דפדפן ספריא (פאנל שמאלי)
-│   ├── export.js            # ייצוא PDF + הדפסה
-│   └── utils.js             # ניקוי טעמים, פורמט מראה מקום, helpers
-├── assets/
-│   └── icons/               # אייקונים SVG
+│   ├── ui-sheet.js          # פאנל ימני: כרטיסים, גרירה, בס"ד dropdown
+│   ├── ui-browser.js        # פאנל שמאלי: עץ + chips + related + selection
+│   ├── export.js            # window.print() + ייצוא JSON
+│   └── utils.js             # text helpers + Hashem-kinnui + formatMarehMakom
+├── assets/favicon.svg
 ├── CLAUDE.md                # קובץ זה
-├── README.md
-└── .gitignore
+└── README.md
 ```
 
-**עקרון:** קובץ JS אחד לכל אחריות. מונע context bloat בעבודה עם Claude Code.
+**עקרון:** קובץ JS אחד לכל אחריות. מונע context bloat ומקל איתור באגים.
 
 ---
 
-## ✨ פיצ'רים מפורטים
+## 4. ניווט בקטגוריות — שיעורים שלמדנו בדם
 
-### 1. דפדפן ספריא (פאנל שמאלי)
+זה ה-section החשוב ביותר. **קרא לפני שאתה נוגע ב-`ui-browser.js`.**
 
-**תפריט שורש:** קטגוריות עיקריות - תנ"ך, משנה, תלמוד בבלי, תלמוד ירושלמי, מדרש, הלכה, קבלה, ליטורגיה.
+### 4.1 השיטה: לכת אחרי עץ ה-TOC של ספריא literally
 
-**Drill-down:** קטגוריה → ספר → פרק/דף → פסוק/עמוד. נטען מ-`/api/index`.
+עץ הניווט (chips → קוביות תת-קטגוריה → ספרים) **חייב לעקוב אחרי המבנה ש-`/api/index` מחזיר**. כל לחיצה מציגה את ה-`contents` הישיר של הצומת הנוכחי — בלי המצאות.
 
-**חיפוש חופשי:** שדה autocomplete בראש הפאנל. שולח ל-`/api/name/<query>` ומציג הצעות בעברית.
+האימפלמנטציה:
+- `tocRawTree` — שמירה של העץ הגולמי כפי שספריא החזירה.
+- `findTreeNodeByPath(pathEn)` — הולך לפי `category` segments.
+- `commonPathEn(books)` — מוצא prefix משותף של books מ-curated chip → ככה ה-chip יודע איזה צומת לפתוח.
+- `renderTreeNode(node, label, prevCrumb)` — מציג את `node.contents` כקוביות. צומת עם `contents` → drilldown. עלה (book) → `loadRef(title)`.
 
-**מסך הצגת פסוק:**
-- טקסט הפסוק/מקור: ניקוד **כן**, טעמים **לא** (ראה פונקציית `removeTeamim`)
-- כפתור "הוסף לדף ←" שמעביר את המקור לדף הימני
-- מתחת לפסוק: רשימת **מקורות מקושרים** מקובצים לפי קטגוריה:
-  - 📖 פרשני התורה (רש"י, רמב"ן, אבן עזרא, ספורנו, אור החיים...)
-  - 🔄 תרגומים (אונקלוס, יונתן)
-  - 📚 מדרשים (רבה, תנחומא, ילקוט...)
-  - ⚖️ הלכה (רמב"ם, שולחן ערוך...)
-  - 🎓 תלמוד (סוגיות שמצטטות)
-- כל מקור מקושר: preview (100 תווים ראשונים), כפתור הרחבה לטקסט המלא, וכפתור "הוסף ←"
+**אל תעשה:**
+- ❌ אל תכתוב אלגוריתם heuristic מסוג "find variation depth + group by path segment". זה ניסיתי, וזה יצר קוביות-אב מזויפות כמו "אגדת בראשית" מקבצת אליה ספרים שאינם תחתיה, "שולחן ערוך הקדמה" מקבצת את כל השו"ע, "הערות שוליים על מכילתא" מקבצת מדרשי הלכה. הקטגוריות שספריא הגדירה הן הקטגוריות. אם משהו נראה "מעניין לקבץ", זה כמעט תמיד טעות.
+- ❌ אל תניח ש-`pathEn.length === N` קבוע. ספרים תחת `Tanakh/Torah/Genesis` יקבלו `pathEn = ['Tanakh', 'Torah']` (אורך 2 — נתיב ההורה, **לא כולל** את שם הספר). פרשנים תחת `Tanakh/Commentary/Rashi/Rashi on Genesis` יקבלו `pathEn = ['Tanakh', 'Commentary', 'Rashi']` (אורך 3). ה-filter ל-24 ספרי תנ"ך הוא `pathEn.length === 2 && pathEn[1] in {Torah, Prophets, Writings}`.
 
-**Quick-add ברמת קבוצה:** כפתור "הוסף את כל פרשני התורה לדף" בכל קבוצת מקורות. חוסך 5+ לחיצות.
+### 4.2 קטגוריות synthetic
 
-### 2. דף המקורות (פאנל ימני)
+קטגוריות שאין להן צומת ב-TOC של ספריא ושאני בכל זאת רוצה להציג כ-chip:
 
-**כותרת:** שדה ערוך - "שם השיעור" (למשל: "פרשת לך-לך, שבת בוקר, פרשני התורה על 'לך לך'").
+| chip | תוכן | איך בנוי |
+|------|------|----------|
+| `פרשנות תנ"ך` | רש"י, רמב"ן, רד"ק, וכו' | filter על `pathEn.some(p => /Commentary/i.test(p))`. fallback: `heTitle` מכיל ` על `. |
+| `פרשנות משנה` | ברטנורא, יכין, בועז, וכו' | אותו דבר עבור Mishnah. |
 
-**רשימת מקורות:** כל מקור הוא "כרטיס" עם:
-- כותרת = **מראה מקום בעברית** (אוטומטי מספריא, או ערוך חופשי)
-- גוף הטקסט (ערוך - אפשר לקצר/לערוך אחרי ההוספה)
-- כפתורי פעולה: 🗑 מחיקה, ⬆⬇ הזזה, ✏️ עריכה
-- אינדיקטור: 📜 ספריא / ✏️ עצמאי
-- שמירה אוטומטית של ה-`sefariaRef` המקורי גם אחרי עריכה
+לאחר הסינון, ה-chip מקבל את `books` שלו. אם `commonPathEn` של ה-books מצביעה על צומת ב-`tocRawTree`, ה-tree-nav נכנס לתפקיד. אחרת, fallback ל-`renderHierarchicalCategoryNav` (קיבוץ לפי commentator).
 
-**תיבה עצמאית:** כפתור `+ הוסף מקור עצמאי` יוצר כרטיס ריק. שני שדות:
-- כותרת/מראה מקום (חופשי - למשל "שו"ת אגרות משה, יו"ד ב:סה")
-- גוף הטקסט (paste/הקלדה)
+**ברירת מחדל:** אם אפשר tree-based — תמיד עדיף.
 
-**הגדרות עיצוב (panel/modal):**
-- פונט: Frank Ruhl Libre / David Libre / Bellefair / Heebo (dropdown)
-- גודל גופן בסיס: 12pt / 14pt / 16pt / 18pt
-- צ'קבוקס: "כל מקור בעמוד חדש בהדפסה"
-- צ'קבוקס: "הצג מספור מקורות"
-- שולי דף: רגיל / רחב / צר
-- מצב הדפסה: צבעוני / שחור-לבן ניגודיות מוגברת
+### 4.3 כפתור חזרה — שמור את ה-chain
 
-### 3. ספריית דפים שמורים
+כשמלחיצים על קוביית-ספר בתוך עץ, `drillFrom` חייב להכיל:
+```js
+{ ref: '__category__', heRef, _isCategory: true, _node, _label, _prevCrumb }
+```
 
-**מודל השמירה:**
-- **טיוטה פעילה (`activeDraft`):** auto-save כל שינוי. תמיד יש בדיוק אחת.
-- **דפים שמורים (`savedSheets`):** מערך עם שם, תאריך, ותוכן מלא.
-- **דף חדש:** מאפס את הטיוטה הפעילה (עם confirm).
+`_prevCrumb` שומר את שרשרת ה-back של הרמות מעל. `reloadStackEntry` מעביר אותה חזרה ל-`renderTreeNode`. ככה הכפתור "→ חזרה" ממשיך להופיע עד שמגיעים לראש העץ — ולא נעלם אחרי לחיצה אחת.
 
-**חלון "הדפים שלי":**
-- רשימת כל הדפים השמורים (שם, תאריך עדכון אחרון)
-- 📂 פתח | 📋 שכפל | 🗑 מחק
+### 4.4 ספרים בעלי SchemaNode מורכב (Zohar, Sifra, Mishneh Torah)
 
-**ייצוא JSON (אדוונסד):** כפתור "ייצא קובץ עבודה" לגיבוי או שיתוף בין מורים. כפתור מקביל לייבוא. נחבא ב-"הגדרות מתקדמות".
+`/api/v3/texts/<title>` לטרקטטים פשוטים מחזיר טקסט. ל-SchemaNodes זה עשוי לזרוק 500 או להחזיר מבנה לא תקין. ב-`loadRef` יש fallback:
+1. `SefariaError.code` ∈ {`server`, `not_found`, `parse`} → ננסה `fetchIndexFor(title)`.
+2. אם `idx.isComplex && idx.nodes.length` → `renderComplexBookIndex(bookRef, idx)` שמציג את ה-`nodes` כקוביות.
+3. כל קוביה טוענת `<bookRef>, <enTitle>`.
+
+**אזהרת לולאה (תוקנה — אבל קל לחזור עליה):** sub-node שגם הוא complex (Sifra → Tzav → Shemini) — אם נטעין ref מורכב `Sifra, Tzav` דרך loadRef, ספריא תזרוק 500 שוב, נקרא ל-`fetchIndexFor('Sifra, Tzav')` שמתעלם מהזנב ומחזיר את ה-index של Sifra → נראה את אותן הקוביות שוב → ref מורכב יותר → 400. הקוד ב-`renderComplexBookIndex` בודק האם ל-`node.nodes` יש תוכן — אם כן, recurse ב-`renderComplexBookIndex` עם ה-sub-node ישירות במקום round-trip דרך `loadRef`.
+
+### 4.5 תלמוד בבלי — Daf 1 ב-Placeholder
+
+ספריא שומרת את מערך הטקסטים של בבלי **כשאינדקסים 0,1 הם placeholders ריקים לדף א'** (כי אין דף א' בבבלי — תמיד מתחילים מדף ב'). ה-tractate-level grid (`renderBavliBookNav`) חייב להתחיל מ-`dafNum = i + 1` (לא `2 + i`), עם סינון של דף עם amudim ריקים. אותה פילוסופיה ב-`talmudHeLabel` ו-`talmudEnLabel`.
+
+### 4.6 זיהוי קטגוריה — קטגוריות **אנגליות** ולא heRef
+
+ב-`detectKind(result)` משתמשים ב-`result.categories` (אנגלית), לא ב-`heCategories`. הסיבה: heRef ועברית משתנים בין תגובות (גרשיים שונים, range refs מרגיזים), בעוד שהאנגלית של ספריא יציבה.
+
+נווט בעומק: `result.sections.length` (גם של ספריא) במקום parse של heRef. `sections.length === 0` = ספר שלם, `=== 1` = פרק/דף, `=== 2` = פסוק/עמוד/משנה.
 
 ---
 
-## 🔌 אינטגרציה עם Sefaria API
+## 5. פורמטי מראה מקום (`formatMarehMakom`)
 
-### Base URL
-```
-https://www.sefaria.org/api
-```
+כל מראה מקום חייב להיות בעברית. **אסור לאפשר fallback לרפרנס האנגלי** — שום מקום בקוד.
 
-### Endpoints עיקריים
+| קטגוריה | פורמט | הערות |
+|---------|--------|--------|
+| תנ"ך | `<ספר>, פרק X, פסוק Y` | פסיק בין פרק לפסוק. |
+| משנה | `משנה <מסכת>, פרק X משנה Y` | "משנה" כקידומת — מבדיל מבבלי באותו שם. |
+| תלמוד בבלי | `<מסכת>, דף X עמוד א/ב` | בלי "מסכת" / "תלמוד" כקידומת. |
+| תלמוד ירושלמי | `ירושלמי <מסכת>, פרק X הלכה Y` | פסיק אחד, לא שניים. |
+| משנה תורה | `משנה תורה לרמב"ם, הלכות <נושא>, פרק X, הלכה Y` |  |
+| שו"ע / טור | `שולחן ערוך, <חלק>, סימן X סעיף Y` |  |
+| תרגומים | `תרגום <שם> על <מראה-מקום-תנ"ך>` | recurse על ה-inner. |
+| פרשנים | `<פרשן> על <מראה-מקום-תנ"ך>` | רמת ההערה (`א:א:א`) נחתכת — רק פרק:פסוק. |
 
-#### 1. שליפת טקסט
+מספרים: אות בודדת **בלי גרשיים** (`פרק א`), רב-תווית **עם גרשיים** (`פרק י״ב`). ניקוד של אותיות שמורים (`וְהָאָרֶץ`), טעמים מוסרים תמיד (`removeTeamim`).
 
-```
-GET /api/v3/texts/<ref>?version=hebrew&return_format=text_only
-```
+`parseHeRef` משתמש ב-`heCategories` לזיהוי שם הספר (תופס שמות מורכבים כמו "מלכים א" או "הלכות תפלה וברכת כהנים"). אם נכשל, נופל ל-whitespace split של המילה הראשונה.
 
-דוגמה: `https://www.sefaria.org/api/v3/texts/Genesis.1.1`
+---
 
-**Response חלקי:**
-```json
+## 6. החלפת שם ה' בכינוי (`applyHashemKinnui`)
+
+הגדרה: `replaceHashemName`, **ברירת מחדל ON**.
+
+| שם | החלפה | תנאי |
+|----|--------|-------|
+| יהוה | י-הוה | תמיד (גם עם קידומות כמו ויהוה / ליהוה). |
+| אלהים | א-להים | תמיד (גם עם קידומות לאלהים / כאלהים / ולאלהים). |
+| אלהי | א-להי | construct ("אלהי ישראל"). |
+| אדני | א-דני | רק במקרים חד-משמעיים: (א) ניקוד אדון-אי עם **חטף-פתח** על האל"ף (`אֲ`), או (ב) "אדני" כמילה עצמאית **ללא ניקוד כלל**. דורש lookahead שלא יבוא אחרי-יוד עוד אות עברית (שלא יתפוס אדניה / אדניהו). |
+| אל | א-ל | רק `אֵ` עם **צירי** (שם ה'). `אֶ` עם **סגול** (מילת יחס "אל/ל") **לא** מותאם. קידומות `ב/ה/ו/כ/ל/מ/ש` נתפסות. lookbehind מונע התאמה בתוך ישראל / אלעזר / אלא. |
+| צבאות | צבא-ות | תמיד. |
+| שדי | שד-י | רק כמילה עצמאית (בודקת גבול). |
+| "אהיה אשר אהיה" | "אהי-ה אשר אהי-ה" | רק כצירוף שלם — לא מטפלים בפועל "אהיה" במשמעויות אחרות. |
+
+**הפונקציה idempotent** — הרצה כפולה לא משנה.
+
+**Edge case ידוע:** "אדני" ללא ניקוד לא מבדיל בין שם ה' לסוקלים ארכיטקטוניים ("אדני כסף"). אצלנו זה false positive — אבל המשתמש קיבל את העלוונת הזו (= "ממש טריקי").
+
+---
+
+## 7. ניקוי טקסט של ספריא (`cleanSefariaText`)
+
+ספריא משאירה בטקסט:
+- תגי HTML inline (`<b>`, `<i>`, `<sup>`).
+- ישויות (`&nbsp;`, `&thinsp;`, `&amp;`, `&#NN;` …).
+- מסמני פרשה `{פ}` `{ס}` `{ש}` `{ר}`.
+- טעמי מקרא (תמיד מוסרים — ניקוד נשמר).
+
+`cleanSefariaText` מטפל בכולם. `decodeHTMLEntities` הוא helper exported. **אסור** לדחוף טקסט שלא עבר ניקוי לכרטיס במקור.
+
+---
+
+## 8. מודל ה-Sheet ושמירה
+
+`sources.js` חושף class `Sheet` עם API מפורש: `setTitle`, `setHeader('right'|'left', v)`, `updateSettings`, `replace`, `reset`, `addSefariaSource`, `addCustomSource`, `updateSource`, `removeSource`, `moveSource`, `moveSourceTo(from, target, before|after)`, `subscribe`. כל mutation יורה event ל-subscribers.
+
+מבנה ה-Sheet:
+```js
 {
-  "ref": "Genesis 1:1",
-  "heRef": "בראשית א׳:א׳",
-  "versions": [
-    { "language": "he", "text": "...", "versionTitle": "..." }
-  ],
-  "categories": ["Tanakh", "Torah", "Genesis"],
-  "heCategories": ["תנ\"ך", "תורה", "בראשית"]
-}
-```
-
-**טיפול:** ניקוי טעמים → שמירת הטקסט המנוקד → שמירת ה-`ref` המקורי לציטוט.
-
-#### 2. מקורות מקושרים
-
-```
-GET /api/related/<ref>
-```
-
-דוגמה: `https://www.sefaria.org/api/related/Genesis.1.1`
-
-**Response חלקי:**
-```json
-{
-  "links": [
-    {
-      "ref": "Rashi on Genesis 1:1:1",
-      "heRef": "רש״י על בראשית א׳:א׳:א׳",
-      "category": "Commentary",
-      "heCategory": "פרשנות",
-      "type": "commentary",
-      "commentator": "Rashi"
-    }
-  ]
-}
-```
-
-**שימוש:** קיבוץ לפי `category`, סינון לפי דרגת חשיבות, הצגה בפאנל ספריא. שליפת הטקסט המלא של כל קישור בהרחבה - לא בטעינה הראשונית (lazy load).
-
-#### 3. אוטוקומפליט/חיפוש
-
-```
-GET /api/name/<query>
-```
-
-דוגמה: `https://www.sefaria.org/api/name/בראשית`
-
-#### 4. אינדקס מלא
-
-```
-GET /api/index
-```
-
-מבנה היררכי של כל הספרים. **לטעון פעם אחת** ב-app init ולשמור ב-memory למהירות drill-down.
-
-### הערות חשובות
-
-- **CORS:** פתוח לכולם, אפשר לקרוא ישירות מ-frontend
-- **Rate limiting:** בלי מגבלה רשמית, אבל כדאי לא להציף
-- **Cache:** ה-API responses טובים ל-cache ב-memory (אותו פסוק לא משתנה). כדאי לממש Map פשוט.
-- **שגיאות:** טיפול ב-404 (ref לא קיים), 500 (server), network errors. הודעה ידידותית בעברית.
-
----
-
-## 🔤 עזרי טיפול בטקסט עברי
-
-### `js/utils.js` - פונקציות ליבה
-
-```javascript
-/**
- * הסרת טעמי מקרא, שמירה על ניקוד
- * Unicode טווחי טעמים: U+0591-U+05AF, U+05BD, U+05BF, U+05C0, U+05C3, U+05C6
- */
-export function removeTeamim(text) {
-  return text.replace(/[\u0591-\u05AF\u05BD\u05BF\u05C0\u05C3\u05C6]/g, '');
-}
-
-/**
- * הסרת כל הניקוד והטעמים (לטקסט "חשוף")
- */
-export function stripAllNikud(text) {
-  return text.replace(/[\u0591-\u05C7]/g, '');
-}
-
-/**
- * הסרת תגי HTML מתשובת ספריא (לפעמים יש <b>, <i>, <sup>)
- */
-export function stripHTML(text) {
-  return text.replace(/<[^>]*>/g, '');
-}
-
-/**
- * בניית מראה מקום מלא בעברית מ-heRef + heCategories
- * 
- * דוגמאות:
- *   heRef: "סוכה ב׳ א", heCategories: ["תלמוד", "בבלי", ...]
- *   → "תלמוד בבלי, מסכת סוכה, דף ב עמוד א"
- *   
- *   heRef: "בראשית א׳:א׳", heCategories: ["תנ\"ך", "תורה", ...]
- *   → "בראשית, פרק א פסוק א"
- */
-export function formatMarehMakom(heRef, heCategories) {
-  const cats = heCategories || [];
-  
-  if (cats.includes('תלמוד') && cats.includes('בבלי')) {
-    // לוגיקה לתלמוד בבלי
-    // לפרסר את ה-heRef ולבנות "תלמוד בבלי, מסכת X, דף Y עמוד Z"
-  }
-  
-  if (cats.includes('משנה')) {
-    // לוגיקה למשנה - "משנה, מסכת X, פרק Y משנה Z"
-  }
-  
-  if (cats.includes('תנ"ך')) {
-    // לוגיקה לתנ"ך - "ספר X, פרק Y פסוק Z"
-  }
-  
-  if (cats.includes('פרשנות')) {
-    // לוגיקה לפרשנים - "[פרשן] על [המקור]"
-  }
-  
-  // ברירת מחדל - heRef הגולמי
-  return heRef;
-}
-```
-
----
-
-## 📊 מודל הנתונים
-
-### מבנה דף מקורות
-
-```javascript
-{
-  id: "sheet_1736000000000",          // unique ID
-  title: "פרשת לך-לך, שבת בוקר",      // שם הדף
-  createdAt: 1736000000000,            // timestamp
-  updatedAt: 1736000000000,
+  id, title, createdAt, updatedAt,
+  headerRight: 'בס"ד',   // chip ימני
+  headerLeft: '',         // chip שמאלי (תאריך / כותרת משנה)
   settings: {
-    font: "Frank Ruhl Libre",
-    fontSize: 14,
-    pageBreakPerSource: false,
-    showNumbering: true,
-    margins: "normal",                 // normal | wide | narrow
-    printMode: "color"                 // color | bw-high-contrast
+    font, fontSize, showNumbering, showDividers, showPageNumbers,
+    replaceHashemName: true,   // default ON
+    margins,
   },
   sources: [
-    {
-      id: "source_1",
-      type: "sefaria",                 // sefaria | custom
-      title: "בראשית, פרק א פסוק א",   // מראה מקום
-      text: "בְּרֵאשִׁית בָּרָא...",
-      sefariaRef: "Genesis.1.1",       // רק עבור type=sefaria
-      sefariaHeRef: "בראשית א׳:א׳",    // לציטוט מסודר
-      originalText: "...",              // הטקסט המקורי לפני עריכה
-      hasBeenEdited: false
-    },
-    {
-      id: "source_2",
-      type: "custom",
-      title: "שאלה לפתיחה",
-      text: "מה ההבדל בין..."
-    }
+    { id, type: 'sefaria'|'custom', title, text, sefariaRef, sefariaHeRef,
+      originalText, hasBeenEdited },
+    ...
   ]
 }
 ```
 
-### מבנה localStorage
-
-```javascript
-{
-  "daf_mekorot_activeDraft": { /* dafObject */ },
-  "daf_mekorot_savedSheets": [
-    { /* dafObject 1 */ },
-    { /* dafObject 2 */ }
-  ],
-  "daf_mekorot_userSettings": {
-    "defaultFont": "Frank Ruhl Libre",
-    "defaultFontSize": 14
-  }
-}
-```
+`storage.js` חושף `loadActiveDraft`/`saveActiveDraft`/`loadSavedSheets`/`saveSheetToLibrary`/`deleteSavedSheet`/`duplicateSavedSheet`/`loadUserSettings`/`saveUserSettings`. Auto-save על ה-active draft מתבצע debounced 300ms דרך subscribe ב-`app.js`.
 
 ---
 
-## 🎨 עיצוב וטיפוגרפיה
+## 9. הדפסה / PDF
 
-### פונטים זמינים (Google Fonts)
-
-1. **Frank Ruhl Libre** - ברירת מחדל, קלאסי ומסורתי
-2. **David Libre** - חלופה רחבה יותר
-3. **Bellefair** - סריף עכשווי
-4. **Heebo** - סנס-סריף מודרני (לסטייל פחות מסורתי)
-
-טעינה ב-`index.html`:
-```html
-<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;700&family=David+Libre:wght@400;700&family=Bellefair&family=Heebo:wght@400;700&display=swap" rel="stylesheet">
-```
-
-### עקרונות RTL
-
-```css
-html { direction: rtl; }
-body { text-align: right; }
-
-/* טקסט מעורב עברית-אנגלית-מספרים */
-.mixed-content { unicode-bidi: plaintext; }
-
-/* גופנים עבריים בטקסט מקורות */
-.source-text {
-  font-family: 'Frank Ruhl Libre', serif;
-  font-feature-settings: "kern" 1;
-  line-height: 1.7;
-}
-```
-
-### Print CSS (קריטי לאיכות הייצוא!)
-
-```css
-@media print {
-  body { background: white; color: black; }
-  
-  /* הסתרת פאנל ספריא */
-  .sefaria-browser,
-  .toolbar,
-  .controls,
-  .edit-buttons { display: none !important; }
-  
-  /* הרחבת דף המקורות לכל הרוחב */
-  .source-sheet {
-    width: 100%;
-    max-width: none;
-    padding: 0;
-  }
-  
-  /* כל מקור לא נחתך באמצע */
-  .source-card { 
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-  
-  /* אופציונלי: כל מקור בעמוד חדש */
-  .page-break-mode .source-card:not(:first-child) { 
-    page-break-before: always;
-    break-before: page;
-  }
-  
-  @page {
-    margin: 2cm;
-    size: A4;
-  }
-}
-```
+`window.print()` עם `@media print` ב-`print.css`. עקרונות:
+- מוסתרים בהדפסה: header אפליקציה, פאנל ספריא, פעולות (פנים-כרטיס), drag handle.
+- **ראש העמוד**: `.sheet__print-header` (בס"ד ימין / תאריך שמאל) → `.sheet__print-title` (כותרת באמצע). **בסדר הזה** — ה-`::before` הישן הוסר.
+- **שום `page-break-inside: avoid`** על `.source-card`: מקור ארוך גולש טבעית לעמוד הבא. עם זאת, `widows`/`orphans` ו-`page-break-after: avoid` על ה-head כדי שכותרת לא תישאר לבד.
+- קו מפריד בין מקורות: מגוון ב-`[data-show-dividers='true']`.
+- מספרי עמודים: מוזרק דינמית כ-`<style>` עם `@page { @bottom-center { content: counter(page) " / " counter(pages); } }` כי `@page` לא ניתן לסינון לפי attribute selectors.
+- **אין** קרדיט "מקור: ספריא" על דף ההדפסה (בכוונה — נשמר רק ב-footer של ה-HTML).
 
 ---
 
-## 🚀 שלבי פיתוח (Phased Approach)
+## 10. החלטות UX שכבר נסגרו
 
-### Phase 1 - MVP (מטרה: דף מקורות בסיסי עובד)
-
-- [x] מבנה תיקיות + `index.html` בסיסי
-- [x] Split view layout עם RTL מלא
-- [x] חיפוש פשוט בספריא (`/api/name/`)
-- [x] שליפה והצגה של פסוק (`/api/v3/texts/`)
-- [x] ניקוי טעמים, שמירת ניקוד
-- [x] כפתור "הוסף לדף" → מוסיף מקור לפאנל ימני
-- [x] תיבה עצמאית (custom source)
-- [x] עריכת טקסט וכותרת אחרי הוספה
-- [x] מחיקה וסידור מקורות (חיצים)
-- [x] ייצוא PDF דרך `window.print()` עם CSS print
-- [x] auto-save של טיוטה פעילה ל-localStorage
-
-### Phase 2 - מקורות מקושרים
-
-- [x] קריאה ל-`/api/related/` לכל מקור שנפתח
-- [x] קיבוץ הקישורים לפי קטגוריה (פרשנים / מדרשים / וכו')
-- [x] preview של מקור מקושר עם הרחבה ב-click
-- [x] כפתור "הוסף" לכל מקור מקושר
-- [x] Quick-add: "הוסף את כל פרשני התורה" ברמת קבוצה
-
-### Phase 3 - דפדוף מלא בעץ
-
-- [x] טעינת `/api/index` ב-app init (lazy per-book via `fetchIndexFor`)
-- [x] עץ ניווט: ספר → פרק/דף → פסוק/שורה
-- [x] היסטוריית ניווט (breadcrumb + back)
-- [ ] סימניות (bookmarks) למקומות נפוצים
-
-### Phase 4 - ספריית דפים
-
-- [x] חלון "הדפים שלי"
-- [x] שמירה מפורשת עם שם
-- [x] טעינת דף שמור
-- [x] מחיקה, שכפול
-- [x] "התחל דף חדש" (עם confirm)
-
-### Phase 5 - הגדרות עיצוב
-
-- [x] בחירת פונט (4 אופציות)
-- [x] בחירת גודל גופן
-- [x] ~~צ'קבוקס "כל מקור בעמוד חדש"~~ — בוטל: גלישה רגילה עם `page-break-inside: avoid` לכרטיס
-- [x] מספור מקורות
-- [x] שולי דף
-- [x] מצב הדפסה שחור-לבן
-
-### Phase 6 - ליטוש והעמקה
-
-- [ ] בניית מראה מקום מלא לפי קטגוריות (formatMarehMakom)
-- [ ] ייצוא/ייבוא JSON
-- [ ] כותרת רצה בהדפסה
-- [ ] טפסי הדפסה (A4, Letter, Legal)
-- [ ] קיצורי מקלדת
-- [ ] תאימות מובייל (לפחות לצפייה)
+לפני שתשנה אותן — תוודא שהמשתמש באמת ביקש:
+- **חיצים** ב-RTL: `→ חזרה` ו-`→ הוסף לדף / הוסף קטע נבחר / הוסף כפסקה / הוסף את כל ...`. חיצי "הקודם/הבא" של ניווט בכרטיס נשארו `→ הקודם` / `הבא ←` (הוחלט נפרד).
+- **מחיקת מקור**: לחיצה על 🗑 → מחיקה מיידית, **בלי `confirm()`**.
+- **בס"ד chip**: dropdown מותאם של 3 אופציות — `בס"ד` / `אחר…` (prompt) / `השאר ריק`. ה-menu עם `position: fixed` (חישוב קואורדינטות מהכפתור) כי `.panel` עוטף ב-`overflow: hidden` שחוטם dropdowns רגילים.
+- **תנ"ך paragraph mode**: בנוסף ל-"הוסף לדף" יש "הוסף כפסקה (ללא מספרי פסוקים)" שמוסיף את כל הפרק כפסקה רציפה עם נקודה בסוף כל פסוק.
+- **מצב הדפסה צבעוני/ש"ל**: הוסר — תמיד שחור-לבן.
+- **ברירת מחדל לכינוי שם ה'**: ON.
+- **"מסכתות קטנות"**: אין chip נפרד. ספריא מקננת אותם תחת תלמוד בבלי, וה-tree-nav חושף אותם שם.
 
 ---
 
-## 💡 עקרונות עבודה עם Claude Code
+## 11. Cache-busting
 
-1. **משימות אטומיות:** כל phase מתפצל למשימות קטנות, פיצ'ר אחד בכל בקשה. לא "תבנה את כל Phase 1" אלא "תבנה את ה-layout של ה-split view בלבד".
-
-2. **קבצים נפרדים:** כל פונקציונליות בקובץ JS משלה (sefaria-api.js, storage.js, וכו'). מונע context bloat ומקל על איתור באגים.
-
-3. **תיעוד דו-לשוני:** הערות בקוד יכולות להיות בעברית או באנגלית. שמות פונקציות באנגלית, מחרוזות UI בעברית.
-
-4. **בדיקה לפני המשך:** אחרי כל משימה - בדיקה בדפדפן לפני התקדמות. לא לערום פיצ'רים בלי לוודא שהקיים עובד.
-
-5. **`/compact` בין שלבים:** ניקוי context בין phase ל-phase מונע לופים ו-timeouts.
-
-6. **עדכון `CLAUDE.md`:** סמן ✅ בכל משימה שהושלמה ב-Phased Approach. הקובץ הזה הוא ה-source of truth.
-
-7. **commit אחרי כל פיצ'ר עובד:** קל לחזור אחורה אם משהו נשבר.
+`index.html` כולל `<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">` (+ Pragma + Expires) כדי שעדכוני JS/CSS לא ייתקעו ב-CDN. עדיין: GitHub Pages CDN לוקח 1–2 דקות. אם משתמש מדווח "לא עובד" — בקש hard refresh לפני שאתה רואה באג.
 
 ---
 
-## ⚠️ בעיות נפוצות לצפות מראש
+## 12. סטטוס Phased Plan
 
-1. **טקסטים ארוכים:** רמב"ן על פסוק יכול להיות 500+ מילים. חובה preview + אפשרות לקצר/לערוך אחרי ההוספה.
+(נשמר היסטורית — כל הסעיפים יושמו וקיבלו לפעמים iteration נוספת.)
 
-2. **HTML בתוך טקסט ספריא:** לפעמים יש `<b>`, `<i>`, `<sup>`, `<small>`. החלטה: לרנדר (טוב לפסוקים) או להסיר (אם בעייתי).
+- **Phase 1 (MVP)** ✅ — split view, חיפוש בסיסי, הוספה לדף, ייצוא, auto-save.
+- **Phase 2 (Related)** ✅ — קיבוץ פרשנים, expand+add, group-add. אזהרה: כותרות של פריטי related חייבות לכלול שם יצירה (`enrichItemTitle` משלים מה-`tocBooks` אם ספריא משמיטה את `heCommentator`).
+- **Phase 3 (Tree)** ✅ — `tocRawTree` + `renderTreeNode`. **לא** קיבוץ heuristic.
+- **Phase 4 (Library)** ✅ — שמירת דפים, שכפול, מחיקה.
+- **Phase 5 (Design)** ✅ — פונט, גודל, מספור, גלישה טבעית, מספרי עמודים, ביטול צבעוני/ש"ל.
+- **Phase 6 (Polish)** ✅ — Hashem kinnui (כולל ניקוד-מודע), פורמט מראה מקום per-category, drag-and-drop, favicon, meta, no-cache, complex-schema fallback (כולל הגנת לולאה), back-button chain.
 
-3. **חוסר עקביות בניקוד:** לא כל הטקסטים בספריא מנוקדים. צריך לוודא שהקוד עמיד גם לטקסט "חשוף".
-
-4. **RTL ומספרים:** מספרי עמודים, פרק:פסוק, מספרי הערות עלולים להופיע ברצף שגוי. שימוש ב-CSS `unicode-bidi: plaintext` או Unicode markers (`\u202B`) במקומות בעייתיים.
-
-5. **הבדלי דפדפנים בהדפסה:** Chrome, Firefox, Safari מתנהגים שונה ב-`@media print`. לבדוק לפחות ב-Chrome ו-Firefox.
-
-6. **localStorage quota:** ~5-10MB לדפדפן. דפים רגילים <100KB, אז יש מקום למאות דפים. עדיין - להזהיר אם מתקרבים.
-
----
-
-## 📚 משאבים
-
-- [Sefaria API Documentation](https://developers.sefaria.org/)
-- [Sefaria-Project on GitHub](https://github.com/Sefaria/Sefaria-Project) - דוגמאות קוד
-- [Google Fonts Hebrew](https://fonts.google.com/?subset=hebrew)
-- [Hebrew Unicode Reference](https://unicode.org/charts/PDF/U0590.pdf)
-- [MDN @media print](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/print)
+לא הוטמע: סימניות (bookmarks), ייצוא/ייבוא JSON של דפים (יש helper אבל לא מחווט ל-UI).
 
 ---
 
-## 📄 רישיון ושיוך
+## 13. עקרונות עבודה עם Claude Code
 
-המערכת משתמשת ב-Sefaria API שטקסטיו ברישיון Creative Commons (CC-BY-SA / CC-0 בהתאם למקור). דף מקורות שמופק מהמערכת מציין את ספריא כמקור בכותרת תחתונה.
+1. **קרא את הקובץ הזה לפני שינוי.** במיוחד סעיפים 4, 5, 6.
+2. **משימות אטומיות.** פיצ'ר אחד בכל PR. לא לערום.
+3. **אל תמציא קטגוריות / קיבוצים.** ספריא היא ה-source of truth — תיגזרי כל מבנה מ-`/api/index`.
+4. **תמיד דחוף ל-`claude/torah-resources-page-Iqkrw`, פתח PR, ואחרי הסכמת המשתמש מזג עם squash.** דפוס הקומיט: רענון העתק → דחיפה → PR → המתנה לאישור → merge.
+5. **אם conflict ב-merge** (קורה תמיד כי ה-branch הקודם נקטם דרך squash) → `git fetch origin main` → `git rebase --onto origin/main <last-pushed-tip>` → `git push --force-with-lease`.
+6. **תיעוד שינויים בעברית בקומיט message ו-PR body**. המשתמש קורא עברית.
+7. **בדיקה לפני המשך.** ב-CI אין מערכת — אז `node --check` על כל קובץ JS לפני commit. בדיקות פונקציונליות ב-Node להגזרות regex (`applyHashemKinnui`, `parseHeRef`).
+8. **שמור שמות פונקציות באנגלית, מחרוזות UI בעברית.**
 
 ---
 
-## 🔄 לוג שינויים
+## 14. בעיות מוכרות / TODOs פתוחים
 
-- 2026-05-13: גרסה ראשונה של ה-spec
+- ספרים בעלי schema מורכב מאוד (Zohar, Sifra) — נכון לתאריך זה ה-fallback עובד לרמת sub-section ראשונה. סיבוב נוסף ייתכן ויידרש כש-Sefaria משנה schema.
+- "אדני" ללא ניקוד — false positive על שמות סוקלים (אדנים, אדני כסף). המשתמש מודע.
+- בדיקה ב-Safari < 16.4 — `(?<![א-ת]…)` lookbehind משתנה לא נתמך. ב-Chromium / Firefox / Safari 16.4+ הכל עובד.
+
+---
+
+## 15. רישיון
+
+הטקסטים בספריא ב-Creative Commons (CC-BY-SA / CC-0). מצוין ב-footer של ה-HTML.
