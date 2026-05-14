@@ -49,6 +49,22 @@
       <!-- Right panel: the source sheet under construction -->
       <section class="panel panel--sheet" aria-label="דף המקורות">
         <div class="panel__head">
+          <div class="sheet-toprow">
+            <input
+              type="text"
+              class="sheet-header-chip sheet-header-chip--right"
+              data-role="sheet-header-right"
+              placeholder='בס"ד'
+              aria-label='קידומת ימנית למעלה (בס"ד / ב"ה / לק"י / מותאם)'
+            />
+            <input
+              type="text"
+              class="sheet-header-chip sheet-header-chip--left"
+              data-role="sheet-header-left"
+              placeholder="תאריך / כותרת משנה"
+              aria-label="כיתוב שמאלי למעלה (תאריך או כותרת משנה)"
+            />
+          </div>
           <input
             type="text"
             class="sheet-title"
@@ -97,6 +113,7 @@
             <button type="submit" class="btn btn--primary btn--small">חפש</button>
           </form>
           <div class="search__suggestions" data-role="suggestions" hidden></div>
+          <div class="category-chips" data-role="category-chips"></div>
         </div>
 
         <div class="browser" data-role="browser">
@@ -139,6 +156,10 @@
         <label class="field field--inline">
           <input type="checkbox" data-role="setting-dividers" checked />
           <span>קו מפריד בין מקורות בהדפסה</span>
+        </label>
+        <label class="field field--inline">
+          <input type="checkbox" data-role="setting-page-numbers" />
+          <span>מספרי עמודים בהדפסה</span>
         </label>
         <label class="field">
           <span>שולי דף</span>

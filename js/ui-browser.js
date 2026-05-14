@@ -36,6 +36,7 @@ function ensureTOC() {
         return;
       }
       walkTOC(tree, [], []);
+      curateTopLevelCategories();
       tocReady = true;
       console.log(`[TOC] ready — ${tocBooks.length} books, ${tocCategoryMap.size} category-paths.`,
         'sample categories:', [...tocCategoryMap.keys()].filter((k) => /[֐-׿]/.test(k)).slice(0, 8));
@@ -84,6 +85,64 @@ function addToCategoryMap(key, book) {
   if (!key) return;
   if (!tocCategoryMap.has(key)) tocCategoryMap.set(key, []);
   tocCategoryMap.get(key).push(book);
+}
+
+/**
+ * After walking the TOC, replace the auto-built top-level category
+ * entries (e.g. "תלמוד בבלי") with CURATED lists — only the real
+ * masechtot, not commentaries, reference works, or minor tractates
+ * (which get their own "מסכתות קטנות" category).
+ */
+function curateTopLevelCategories() {
+  const set = (heKey, enKey, books) => {
+    if (!books.length) return;
+    tocCategoryMap.set(heKey, books);
+    if (enKey) tocCategoryMap.set(enKey, books);
+  };
+
+  // Tanakh — flat list of all books (Torah / Prophets / Writings).
+  set('תנ"ך',  'Tanakh',  tocBooks.filter((b) => b.pathEn[0] === 'Tanakh' && b.pathEn.length === 3));
+  set('תנ״ך',  null,      tocCategoryMap.get('תנ"ך') || []);
+
+  // Mishnah — Mishnah/<Seder>/<Masechet> i.e. depth-3 leaves.
+  set('משנה', 'Mishnah', tocBooks.filter((b) => b.pathEn[0] === 'Mishnah' && b.pathEn.length === 3));
+
+  // Talmud Bavli — only the standard masechtot under Talmud/Bavli/Seder X.
+  const bavliMain = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Talmud' && b.pathEn[1] === 'Bavli' &&
+    typeof b.pathEn[2] === 'string' && b.pathEn[2].startsWith('Seder ')
+  );
+  set('תלמוד בבלי', 'Talmud Bavli', bavliMain);
+
+  // Talmud Yerushalmi — same shape.
+  const yerushalmiMain = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Talmud' && b.pathEn[1] === 'Yerushalmi' &&
+    typeof b.pathEn[2] === 'string' && b.pathEn[2].startsWith('Seder ')
+  );
+  set('תלמוד ירושלמי', 'Talmud Yerushalmi', yerushalmiMain);
+
+  // Minor tractates — synthetic category.
+  const minor = tocBooks.filter((b) => b.pathEn.includes('Minor Tractates'));
+  set('מסכתות קטנות', 'Minor Tractates', minor);
+
+  // Halakhah / Mussar / Kabbalah / Chasidut / Midrash / Liturgy /
+  // Jewish Thought — top-level filters, no sub-filter (let everything
+  // under each top category show).
+  const HE_TOP = {
+    'הלכה': 'Halakhah',
+    'מוסר': 'Musar',
+    'קבלה': 'Kabbalah',
+    'חסידות': 'Chasidut',
+    'מדרש': 'Midrash',
+    'ליטורגיה': 'Liturgy',
+    'מחשבת ישראל': 'Jewish Thought',
+    'תוספתא': 'Tosefta',
+    'שאלות ותשובות': 'Responsa',
+  };
+  for (const [he, en] of Object.entries(HE_TOP)) {
+    const books = tocBooks.filter((b) => b.pathEn[0] === en);
+    if (books.length) set(he, en, books);
+  }
 }
 
 function categoryPrefixHe(pathEn) {
@@ -236,8 +295,34 @@ export function initBrowser({ onAddSource, showToast }) {
   let currentResult = null;
 
   // Kick off TOC load in the background so the first category-search
-  // attempt is fast.
-  ensureTOC();
+  // attempt is fast. Once it's ready, populate the chips row.
+  ensureTOC().then(() => renderCategoryChips());
+
+  const chipsBox = $('[data-role="category-chips"]');
+  function renderCategoryChips() {
+    if (!chipsBox || !tocReady) return;
+    // Top-level categories the user typically wants in one click.
+    const TOP = [
+      'תנ"ך', 'משנה', 'תלמוד בבלי', 'תלמוד ירושלמי',
+      'מסכתות קטנות', 'מדרש', 'הלכה', 'קבלה', 'חסידות',
+      'מחשבת ישראל', 'מוסר', 'תוספתא', 'ליטורגיה',
+    ];
+    chipsBox.innerHTML = '';
+    for (const cat of TOP) {
+      const books = tocCategoryMap.get(cat);
+      if (!books?.length) continue;
+      chipsBox.appendChild(el('button', {
+        type: 'button',
+        class: 'category-chip',
+        text: cat,
+        title: `${books.length} ספרים`,
+        onclick: () => {
+          navStack.length = 0;
+          renderCategoryNav(cat, books);
+        },
+      }));
+    }
+  }
 
   /* -------------------- autocomplete -------------------- */
 
@@ -538,15 +623,15 @@ export function initBrowser({ onAddSource, showToast }) {
 
   /* -------------------- shared head/body/actions builders -------------------- */
 
-  /** Card header: title + category + prev/next navigation arrows. */
+  /** Card header: prev (right), title centered, next (left). The three
+   *  slots are flex/grid columns so they stay on a single row. */
   function buildCardHead(result) {
     const title = displayTitleFor(result);
     const category = (result.heCategories || []).join(' • ');
-    const nav = el('div', { class: 'result-card__nav' });
-    // Hebrew RTL: visually the "next" button sits on the LEFT (start of reading),
-    // "prev" on the RIGHT. We use explicit text + arrows so direction is clear.
+
+    const prevSlot = el('div', { class: 'result-card__nav-slot result-card__nav-slot--prev' });
     if (result.prev) {
-      nav.appendChild(el('button', {
+      prevSlot.appendChild(el('button', {
         type: 'button',
         class: 'btn btn--ghost btn--small',
         text: '→ הקודם',
@@ -554,8 +639,10 @@ export function initBrowser({ onAddSource, showToast }) {
         onclick: () => loadRef(result.prev),
       }));
     }
+
+    const nextSlot = el('div', { class: 'result-card__nav-slot result-card__nav-slot--next' });
     if (result.next) {
-      nav.appendChild(el('button', {
+      nextSlot.appendChild(el('button', {
         type: 'button',
         class: 'btn btn--ghost btn--small',
         text: 'הבא ←',
@@ -563,11 +650,13 @@ export function initBrowser({ onAddSource, showToast }) {
         onclick: () => loadRef(result.next),
       }));
     }
-    return el('div', { class: 'result-card__head' }, [
+
+    const center = el('div', { class: 'result-card__head-center' }, [
       el('div', { class: 'result-card__title mixed-content', text: title }),
-      el('div', { class: 'result-card__category', text: category }),
-      nav,
-    ]);
+      category ? el('div', { class: 'result-card__category', text: category }) : null,
+    ].filter(Boolean));
+
+    return el('div', { class: 'result-card__head' }, [prevSlot, center, nextSlot]);
   }
 
   /** Selection bar — shown whenever the user highlights text in `body`. */
@@ -663,6 +752,10 @@ export function initBrowser({ onAddSource, showToast }) {
 
     const body = el('div', { class: 'result-card__body block-body' });
     let plainText = '';
+    // For Tanakh chapter mode, also expose a "paragraph" version (no
+    // verse numbers, no line breaks) so the user can add it via an
+    // alternate button.
+    let plainTextParagraph = '';
 
     if (mode === 'tanakh-chapter') {
       const verses = (Array.isArray(segments) ? segments : []).map((s, i) => ({
@@ -676,6 +769,7 @@ export function initBrowser({ onAddSource, showToast }) {
         ]));
       }
       plainText = verses.map((v) => `${v.label} ${v.text}`).join('\n');
+      plainTextParagraph = verses.map((v) => v.text).join(' ');
     } else if (mode === 'bavli-daf') {
       // segments may be depth-2 ([amudA lines, amudB lines]) for "Sukkah 2",
       // or depth-1 if Sefaria returned the daf flattened. Handle both.
@@ -710,6 +804,24 @@ export function initBrowser({ onAddSource, showToast }) {
 
     const selectionBar = buildSelectionBar(body, title, result);
     const actions = buildActions(title, plainText, result);
+    // Tanakh chapters: add a secondary button that adds the chapter as
+    // one paragraph (no verse numbers, continuous flow).
+    if (mode === 'tanakh-chapter' && plainTextParagraph) {
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn--ghost btn--small',
+        text: '← הוסף כפסקה (ללא מספרי פסוקים)',
+        onclick: () => {
+          onAddSource({
+            title,
+            text: plainTextParagraph,
+            sefariaRef: result.ref,
+            sefariaHeRef: result.heRef,
+          });
+          showToast(`נוסף לדף: ${truncate(title, 40)}`);
+        },
+      }));
+    }
     const relatedPanel = buildRelatedPanel(result.ref);
     return el('div', { class: 'result-card' }, [head, body, selectionBar, actions, relatedPanel]);
   }
@@ -1033,7 +1145,7 @@ export function initBrowser({ onAddSource, showToast }) {
 
     const expandBtn = el('button', {
       type: 'button',
-      class: 'btn btn--ghost btn--small',
+      class: 'btn btn--ghost btn--small related-item__expand',
       text: '↕ הרחב',
       onclick: () => toggleAggregateExpansion(wrap, group),
     });
@@ -1058,10 +1170,20 @@ export function initBrowser({ onAddSource, showToast }) {
 
   async function toggleAggregateExpansion(wrap, group) {
     const body = wrap.querySelector('.related-item__body');
+    const btn = wrap.querySelector('.related-item__expand');
     if (!body) return;
-    if (!body.hidden) { body.hidden = true; return; }
-    if (body.dataset.loaded === 'true') { body.hidden = false; return; }
+    if (!body.hidden) {
+      body.hidden = true;
+      if (btn) btn.textContent = '↕ הרחב';
+      return;
+    }
+    if (body.dataset.loaded === 'true') {
+      body.hidden = false;
+      if (btn) btn.textContent = '↕ כווץ';
+      return;
+    }
     body.hidden = false;
+    if (btn) btn.textContent = '↕ כווץ';
     body.textContent = 'טוען…';
     try {
       const parentRef = commonParentRef(group.items);
@@ -1076,6 +1198,7 @@ export function initBrowser({ onAddSource, showToast }) {
     } catch (err) {
       console.warn('[browser] aggregate expand failed:', err);
       body.textContent = 'שגיאה בטעינת המקור.';
+      if (btn) btn.textContent = '↕ הרחב';
     }
   }
 

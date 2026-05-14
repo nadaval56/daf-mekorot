@@ -151,6 +151,33 @@ body {
   font-family: var(--font-frank);
 }
 
+.sheet-toprow {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.sheet-header-chip {
+  flex: 0 1 auto;
+  min-width: 5rem;
+  max-width: 12rem;
+  border: 1px dashed transparent;
+  background: transparent;
+  font-size: 0.85rem;
+  color: var(--color-text-soft);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-family: var(--font-frank);
+}
+.sheet-header-chip--right { text-align: right; }
+.sheet-header-chip--left  { text-align: left; direction: ltr; }
+.sheet-header-chip:hover,
+.sheet-header-chip:focus {
+  border-color: var(--color-border);
+  background: #fff;
+  outline: none;
+}
+
 .sheet-title:hover,
 .sheet-title:focus {
   border-color: var(--color-border);
@@ -170,6 +197,10 @@ body {
   background: var(--color-bg-panel);
   position: relative;
 }
+
+/* The print-only top row (בס"ד / date) is hidden on screen — it
+   only renders in @media print (see print.css). */
+.sheet__print-header { display: none; }
 
 .source-list {
   list-style: none;
@@ -196,6 +227,20 @@ body {
 }
 
 .source-card:hover { border-color: var(--color-accent); }
+.source-card--dragging { opacity: 0.4; }
+.source-card--drop-target {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
+}
+
+.source-card__drag {
+  cursor: grab;
+  color: var(--color-muted);
+  font-size: 1.05rem;
+  padding: 0 0.2rem;
+  user-select: none;
+}
+.source-card__drag:active { cursor: grabbing; }
 
 .source-card__head {
   display: flex;
@@ -354,6 +399,28 @@ body {
 .search__suggestions button:last-child { border-bottom: 0; }
 .search__suggestions button:hover { background: var(--color-bg-soft); }
 
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding-top: 0.25rem;
+}
+.category-chip {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--color-accent-strong);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.category-chip:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
 .browser {
   flex: 1 1 auto;
   overflow: auto;
@@ -428,15 +495,24 @@ body {
 }
 
 .result-card__head {
-  position: relative;
+  display: grid !important;
+  grid-template-columns: minmax(7em, max-content) 1fr minmax(7em, max-content);
+  align-items: center;
+  gap: 0.5rem;
 }
-.result-card__nav {
+.result-card__nav-slot { display: flex; }
+.result-card__nav-slot--prev { justify-content: flex-start; }
+.result-card__nav-slot--next { justify-content: flex-end; }
+.result-card__head-center {
+  text-align: center;
   display: flex;
-  gap: 0.3rem;
-  margin-top: 0.4rem;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
 }
-.result-card__nav:empty { display: none; }
+.result-card__head-center .result-card__title { font-weight: 700; font-size: 1.05rem; }
+.result-card__head-center .result-card__category { font-size: 0.75rem; color: var(--color-muted); }
 
 /* ----- Block view (Tanakh chapter / Bavli daf+amud) ----- */
 .block-body {
