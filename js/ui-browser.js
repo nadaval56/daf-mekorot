@@ -146,7 +146,8 @@ function addToCategoryMap(key, book) {
  * After walking the TOC, replace the auto-built top-level category
  * entries (e.g. "תלמוד בבלי") with CURATED lists — only the real
  * masechtot, not commentaries, reference works, or minor tractates
- * (which get their own "מסכתות קטנות" category).
+ * (Sefaria nests them under תלמוד בבלי and the tree-based nav surfaces
+ * that branch naturally — no separate chip needed.)
  */
 function curateTopLevelCategories() {
   const set = (heKey, enKey, books) => {
@@ -229,9 +230,9 @@ function curateTopLevelCategories() {
   );
   set('תלמוד ירושלמי', 'Talmud Yerushalmi', yerushalmiMain);
 
-  // Minor tractates — synthetic category.
-  const minor = tocBooks.filter((b) => b.pathEn.includes('Minor Tractates'));
-  set('מסכתות קטנות', 'Minor Tractates', minor);
+  // (Minor Tractates were once a synthetic top-level chip but it
+  // duplicated the same node that's already a child of "תלמוד בבלי"
+  // in the tree-based nav, so it was removed.)
 
   // Halakhah / Mussar / Kabbalah / Chasidut / Midrash / Liturgy /
   // Jewish Thought — let everything under each top category show.
@@ -412,7 +413,7 @@ export function initBrowser({ onAddSource, showToast }) {
     const TOP = [
       'תנ"ך', 'פרשנות תנ"ך',
       'משנה', 'פרשנות משנה',
-      'תלמוד בבלי', 'תלמוד ירושלמי', 'מסכתות קטנות',
+      'תלמוד בבלי', 'תלמוד ירושלמי',
       'מדרש', 'הלכה', 'קבלה', 'חסידות',
       'מחשבת ישראל', 'מוסר', 'תוספתא', 'ליטורגיה',
     ];
@@ -539,7 +540,7 @@ export function initBrowser({ onAddSource, showToast }) {
   /** Top-level category navigation. Prefers Sefaria's raw TOC tree
    *  (so each click drills into the actual children Sefaria defines);
    *  falls back to synthetic book-grouping for categories we built
-   *  ourselves (פרשנות תנ"ך / פרשנות משנה / מסכתות קטנות). */
+   *  ourselves (פרשנות תנ"ך / פרשנות משנה). */
   function renderCategoryNav(categoryLabel, books) {
     // 1. Try the literal Sefaria tree first. If the chip's books all
     //    share a common English path prefix, walk to that node and
