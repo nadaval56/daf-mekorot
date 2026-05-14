@@ -456,12 +456,110 @@ export function initBrowser({ onAddSource, showToast }) {
   });
 
   /** Show books in a category. For Mishnah specifically, surface the 6
-   *  sedarim first; click a seder → its masechtot. */
+   *  sedarim first; for categories with deep hierarchy (פרשנות תנ"ך,
+   *  מדרש, הלכה, קבלה, ...) auto-group into sub-cubes by the first
+   *  varying path segment. Tanakh stays flat (every book unique). */
   function renderCategoryNav(categoryLabel, books) {
     if (categoryLabel === 'משנה' || categoryLabel === 'Mishnah') {
       return renderMishnahSedarimNav(categoryLabel, books);
     }
-    renderFlatCategoryNav(categoryLabel, books);
+    // Tanakh: keep flat (24 unique books).
+    if (categoryLabel === 'תנ"ך' || categoryLabel === 'תנ״ך' || categoryLabel === 'Tanakh') {
+      return renderFlatCategoryNav(categoryLabel, books);
+    }
+    // Everything else: try hierarchical (group by the first varying
+    // path segment). Falls through to flat if there's only one group.
+    renderHierarchicalCategoryNav(categoryLabel, books);
+  }
+
+  /** Compute the depth at which the books' paths first diverge.
+   *  Returns the path index where books differ (-1 if all identical). */
+  function findVariationDepth(books) {
+    if (books.length === 0) return -1;
+    const ref = books[0].pathEn;
+    const maxDepth = Math.max(...books.map((b) => b.pathEn.length));
+    for (let d = 0; d < maxDepth; d++) {
+      const first = books[0].pathEn[d];
+      if (books.some((b) => b.pathEn[d] !== first)) return d;
+    }
+    return -1;
+  }
+
+  /** Group `books` by `book.pathEn[depth]`. Each group records the
+   *  Hebrew name (`pathHe[depth]`) and the matching books. */
+  function groupByPathSegment(books, depth) {
+    const map = new Map();
+    for (const book of books) {
+      const enKey = book.pathEn[depth] || '__leaf__';
+      const heName = book.pathHe[depth] || book.heTitle;
+      if (!map.has(enKey)) {
+        map.set(enKey, { enKey, heName, books: [] });
+      }
+      map.get(enKey).books.push(book);
+    }
+    return [...map.values()];
+  }
+
+  /** Generic hierarchical navigator. Groups books by their first
+   *  varying path segment; clicking a group recurses. When only one
+   *  level remains (all books share a parent), falls through to a
+   *  flat list. */
+  function renderHierarchicalCategoryNav(categoryLabel, books, prevCrumbs = []) {
+    const varDepth = findVariationDepth(books);
+    // Heuristic: if the books share their entire prefix or vary only by
+    // the LAST path segment (i.e. they're all leaf siblings of the
+    // current category), render them as a flat list of clickable books.
+    const allSiblingsAtLeaf = books.every((b) => b.pathEn.length === books[0].pathEn.length)
+      && varDepth >= 0 && varDepth === books[0].pathEn.length - 1;
+    if (varDepth < 0 || allSiblingsAtLeaf || books.length <= 6) {
+      renderFlatCategoryNav(categoryLabel, books, prevCrumbs[0]);
+      return;
+    }
+
+    const groups = groupByPathSegment(books, varDepth);
+    // If only one group emerged we can't usefully sub-divide — fall
+    // through to a flat list of books.
+    if (groups.length <= 1) {
+      renderFlatCategoryNav(categoryLabel, books, prevCrumbs[0]);
+      return;
+    }
+
+    emptyBox.hidden = true;
+    resultBox.hidden = false;
+    resultBox.innerHTML = '';
+
+    const crumbsEl = el('div', { class: 'crumbs' });
+    if (prevCrumbs.length) {
+      crumbsEl.appendChild(el('button', {
+        type: 'button',
+        class: 'crumbs__back',
+        text: '← חזרה',
+        onclick: prevCrumbs[prevCrumbs.length - 1].onClick,
+      }));
+    }
+    crumbsEl.appendChild(el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }));
+    resultBox.appendChild(crumbsEl);
+
+    const head = el('div', { class: 'result-card__head' }, [
+      el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
+      el('div', { class: 'result-card__category', text: `${groups.length} קבוצות • ${books.length} ספרים` }),
+    ]);
+    const hint = el('div', { class: 'browser__hint', text: 'בחר קבוצה:' });
+    const grid = el('div', { class: 'nav-grid' });
+    for (const group of groups) {
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: group.heName,
+        title: `${group.books.length} ספרים`,
+        onclick: () => renderHierarchicalCategoryNav(
+          `${categoryLabel} — ${group.heName}`,
+          group.books,
+          [...prevCrumbs, { onClick: () => renderHierarchicalCategoryNav(categoryLabel, books, prevCrumbs) }]
+        ),
+      }));
+    }
+    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
   }
 
   function renderFlatCategoryNav(categoryLabel, books, prevCrumb = null) {
@@ -1082,8 +1180,12 @@ export function initBrowser({ onAddSource, showToast }) {
     });
 
     const grid = el('div', { class: 'nav-grid' });
+    // We intentionally DO NOT skip apparently-empty children here:
+    // Sefaria's v3 response can leave the top level of a complex book
+    // sparse (e.g. Mishnah Bikkurim shows only chapter 4 because the
+    // first three chapters are nested under a sub-schema). The user
+    // can still click through and we'll surface any errors inline.
     arr.forEach((child, idx) => {
-      if (child == null || (Array.isArray(child) && child.length === 0)) return;
       const subLabel = subSectionHeLabel(addressType, heSectionName, idx);
       const subRef = buildSubRef(result.ref, addressType, 0, idx);
       const btn = el('button', {
@@ -1235,16 +1337,33 @@ export function initBrowser({ onAddSource, showToast }) {
     return parents.every((p) => p === parents[0]) ? parents[0] : items[0].ref;
   }
 
+  /** Build a richer title for a related-item row. The /api/related/
+   *  endpoint sometimes returns just the parent-text's heRef (e.g.
+   *  "בראשית") for a commentary like מי השילוח — without the work
+   *  name. We prepend `heCommentator` / `heCollectiveTitle` when it's
+   *  missing from the heRef itself. */
+  function enrichItemTitle(link) {
+    const heRef = link.heRef || '';
+    const work = link.heCommentator || link.heCollectiveTitle || '';
+    const formatted = displayTitleFor(link);
+    if (work && heRef && !heRef.includes(work) && !formatted.includes(work)) {
+      return `${work}, ${formatted || heRef}`;
+    }
+    return formatted || heRef || work || link.ref;
+  }
+
   function renderCommentaryAggregate(group) {
     const items = group.items;
     const isAggregate = items.length > 1;
     const parentRef = commonParentRef(items);
     const primary = items[0];
-    // Display title: prefer formatted heRef of the parent for aggregates, else
-    // the single item's heRef. Falls through Hebrew-only fallbacks.
+    // Display title: prefer formatted heRef of the parent for aggregates,
+    // else the single item's heRef. If Sefaria's /api/related/ returns a
+    // bare heRef (e.g. "בראשית" for "Mei HaShiloach on Genesis"), prepend
+    // the commentator/work name so the user knows which work it belongs to.
     const aggTitle = isAggregate
       ? `${group.heName || primary.heCommentator || primary.heRef} (${items.length} הערות)`
-      : displayTitleFor(primary);
+      : enrichItemTitle(primary);
 
     const wrap = el('li', { class: 'related-item', dataset: { ref: parentRef } });
 

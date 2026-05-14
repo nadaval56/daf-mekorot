@@ -496,6 +496,10 @@ export function applyHashemKinnui(text) {
   // caught by the bare-אל rule.
   t = t.replace(new RegExp(`(י${N})(ה${N}ו${N}ה)`, 'g'),                      '$1-$2');
   t = t.replace(new RegExp(`(א${N})(ל${N}ה${N}י${N}ם)`, 'g'),                  '$1-$2');
+  // אלהי (construct form, e.g. "אלהי ישראל") — same א-ל-ה-י pattern
+  // but with no ם at the end. Lookahead stops matches inside longer
+  // words like אלהיכם / אלהיכן / אלעזר.
+  t = t.replace(new RegExp(`(א${N})(ל${N}ה${N}י)(?!${N}[א-ת])`, 'g'),           '$1-$2');
   // אדני — same consonants as the architectural-sockets word
   // (אַדְנֵי כֶסֶף, אֲדָנִים) and as the personal name אדניה(ו). Match
   // ONLY the two unambiguous forms:

@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   showNumbering: true,
   showDividers: true,
   showPageNumbers: false,
-  replaceHashemName: false,
+  replaceHashemName: true,
   margins: 'normal',
 });
 
