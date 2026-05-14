@@ -507,14 +507,19 @@ export function applyHashemKinnui(text) {
   t = t.replace(new RegExp(`(אֲ${N})(ד${N}נ${N}י)(?!${N}[א-ת])`, 'g'),  '$1-$2');
   t = t.replace(/(?<![א-ת])אדני(?![א-ת])/g,                              'א-דני');
   t = t.replace(new RegExp(`(צ${N}ב${N}א${N})(ו${N}ת)`, 'g'),                   '$1-$2');
-  // Bare אל — also catches Hebrew-prefixed forms (לאל, כאל, ולאל…)
-  // by allowing a small stack of standard prefix letters
-  // (ב/ה/ו/כ/ל/מ/ש) before the א. The lookbehind asserts that NO
-  // preceding Hebrew LETTER exists (skipping any nikud) — this stops
-  // matches inside longer words like ישראל / אלעזר.
+  // אל — disambiguate divine "אֵל" (with tsere) from the preposition
+  // "אֶל" (with segol = "to / towards"). With nikud the difference is
+  // unambiguous; without nikud the user accepts a transform.
   const PREFIX = '[בהוכלמש]';
+  // (a) Pointed divine: tsere required immediately after the alef.
   t = t.replace(
-    new RegExp(`(?<![א-ת]${N})((?:${PREFIX}${N}){0,3})(א${N})(ל)(?!${N}[א-ת])`, 'g'),
+    new RegExp(`(?<![א-ת]${N})((?:${PREFIX}${N}){0,3})(אֵ${N})(ל)(?!${N}[א-ת])`, 'g'),
+    '$1$2-$3'
+  );
+  // (b) Unpointed bare/prefixed "אל" — no nikud on the alef or lamed.
+  //     Hebrew-letter lookbehind/ahead still keeps ישראל / אלעזר safe.
+  t = t.replace(
+    new RegExp(`(?<![א-ת])((?:${PREFIX}){0,3})(א)(ל)(?![א-ת])`, 'g'),
     '$1$2-$3'
   );
 
