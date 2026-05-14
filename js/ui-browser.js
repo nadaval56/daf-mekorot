@@ -7,7 +7,7 @@
 import { $, el, debounce, truncate, textDepth, buildSubRef, subSectionHeLabel,
          numToHebrewLetters, presentHebrewLetters } from './utils.js';
 import { cleanSefariaText, flattenSefariaText, formatMarehMakom, parseHeRef, buildSegmentCitation } from './utils.js';
-import { lookupName, fetchText, fetchRelated, fetchIndex, SefariaError } from './sefaria-api.js';
+import { lookupName, fetchText, fetchRelated, fetchIndex, fetchIndexFor, SefariaError } from './sefaria-api.js';
 
 /* -------------------- Sefaria TOC (loaded lazily, used for category
    search + disambiguation) -------------------- */
@@ -681,11 +681,30 @@ export function initBrowser({ onAddSource, showToast }) {
       renderResult(result);
     } catch (err) {
       if (err?.name === 'AbortError') return;
+
+      // Many complex-schema books (Zohar, Mishneh Torah, large midrashic
+      // works) cause Sefaria's /api/v3/texts/<title> to 500 because there
+      // isn't one canonical text — there are nested sub-books. In those
+      // cases, fall back to /api/v2/index/<title>, read schema.nodes,
+      // and let the user pick a sub-section.
+      if (err instanceof SefariaError && (err.code === 'server' || err.code === 'not_found' || err.code === 'parse')) {
+        try {
+          const idx = await fetchIndexFor(refOrName, { signal: activeFetch.signal });
+          if (idx?.isComplex && Array.isArray(idx.nodes) && idx.nodes.length) {
+            if (reset) navStack.length = 0;
+            else if (drillFrom) navStack.push(drillFrom);
+            currentResult = { ref: refOrName, heRef: idx.heTitle || refOrName, heCategories: [] };
+            renderComplexBookIndex(refOrName, idx);
+            return;
+          }
+        } catch {
+          /* fall through to the inline-error display below */
+        }
+      }
+
       const msg = err instanceof SefariaError ? err.message : 'אירעה שגיאה בשליפת המקור.';
       showToast(msg, 'error');
       console.warn('[browser] fetch failed:', err);
-      // Render an inline error so the user knows which ref failed and
-      // can decide what to do (drill into a sub-section, retry, etc.).
       emptyBox.hidden = true;
       resultBox.hidden = false;
       resultBox.innerHTML = '';
@@ -699,6 +718,55 @@ export function initBrowser({ onAddSource, showToast }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  /** Show the schema-node sub-sections of a complex book (e.g. Zohar's
+   *  three parts, Mishneh Torah's books). Each click drills into the
+   *  sub-section via a `<book>, <node>` ref. */
+  function renderComplexBookIndex(bookRef, idx) {
+    emptyBox.hidden = true;
+    resultBox.hidden = false;
+    resultBox.innerHTML = '';
+
+    resultBox.appendChild(el('div', { class: 'crumbs' }, [
+      el('span', { class: 'crumbs__current mixed-content', text: idx.heTitle || bookRef }),
+    ]));
+
+    const head = el('div', { class: 'result-card__head' }, [
+      el('div', { class: 'result-card__title mixed-content', text: idx.heTitle || bookRef }),
+      el('div', { class: 'result-card__category', text: (idx.categories || []).join(' • ') }),
+    ]);
+    const hint = el('div', { class: 'browser__hint', text: 'הספר מחולק לחלקים — בחר חלק:' });
+    const grid = el('div', { class: 'nav-grid' });
+    for (const node of idx.nodes) {
+      const heTitle = nodeHebrewTitle(node) || node.title || '?';
+      const enTitle = node.title || '';
+      if (!enTitle) continue;
+      const subRef = `${bookRef}, ${enTitle}`;
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: heTitle,
+        title: subRef,
+        onclick: () => loadRef(subRef, {
+          drillFrom: { ref: bookRef, heRef: idx.heTitle || bookRef },
+        }),
+      }));
+    }
+    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
+  }
+
+  /** Extract a Hebrew title from a schema node. Sefaria's index stores
+   *  it as `heTitle` directly, or in a `titles[]` array of language
+   *  variants. */
+  function nodeHebrewTitle(node) {
+    if (!node) return '';
+    if (node.heTitle) return node.heTitle;
+    if (Array.isArray(node.titles)) {
+      const heT = node.titles.find((t) => t.lang === 'he');
+      if (heT?.text) return heT.text;
+    }
+    return '';
   }
 
   function setLoading(on) {
@@ -1344,12 +1412,27 @@ export function initBrowser({ onAddSource, showToast }) {
    *  missing from the heRef itself. */
   function enrichItemTitle(link) {
     const heRef = link.heRef || '';
-    const work = link.heCommentator || link.heCollectiveTitle || '';
-    const formatted = displayTitleFor(link);
-    if (work && heRef && !heRef.includes(work) && !formatted.includes(work)) {
-      return `${work}, ${formatted || heRef}`;
+    const heCats = link.heCategories || (link.heCategory ? [link.heCategory] : []);
+    const formatted = heRef ? (formatMarehMakom(heRef, heCats) || heRef) : '';
+
+    // Find the Hebrew work name. Sefaria's /api/related/ links don't
+    // always populate heCommentator / heCollectiveTitle, so when those
+    // are missing we extract the work name from the English ref (the
+    // first comma-separated segment is always the title in Sefaria's
+    // ref format, e.g. "Mei HaShiloach, Bereshit, Bereshit 1") and
+    // look it up in our local TOC to translate to Hebrew.
+    let work = link.heCommentator || link.heCollectiveTitle || link.heBook || '';
+    if (!work && link.ref) {
+      const enWork = String(link.ref).split(',')[0].trim();
+      if (enWork) {
+        const tocEntry = tocBooks.find((b) => b.title === enWork || b.heTitle === enWork);
+        work = tocEntry ? tocEntry.heTitle : enWork;
+      }
     }
-    return formatted || heRef || work || link.ref;
+
+    const base = formatted || heRef || link.ref || '';
+    if (work && base && !base.includes(work)) return `${work}, ${base}`;
+    return base || work || '';
   }
 
   function renderCommentaryAggregate(group) {

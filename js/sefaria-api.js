@@ -140,6 +140,10 @@ export async function fetchIndexFor(title, { signal } = {}) {
   // e.g. Mishneh Torah with hilkhot subdivisions). For now we handle simple
   // and surface enough info that the UI can degrade gracefully on complex.
   const schema = data?.schema || {};
+  // SchemaNode books (Zohar, Mishneh Torah, …) have a `nodes` array
+  // describing their sub-sections; surface it so the UI can render
+  // a sub-section grid for fetches that would otherwise 500.
+  const nodes = Array.isArray(schema.nodes) ? schema.nodes : [];
   return {
     title: data?.title || title,
     heTitle: data?.heTitle || schema.heTitle || '',
@@ -148,7 +152,8 @@ export async function fetchIndexFor(title, { signal } = {}) {
     addressTypes: schema.addressTypes || [],
     lengths: schema.lengths || [],
     depth: schema.depth ?? (schema.sectionNames?.length || 0),
-    isComplex: !!data?.has_children || schema.nodeType === 'SchemaNode',
+    isComplex: !!data?.has_children || schema.nodeType === 'SchemaNode' || nodes.length > 0,
+    nodes,
     categories: data?.categories || [],
     raw: data,
   };
