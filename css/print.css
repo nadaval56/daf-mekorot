@@ -45,7 +45,22 @@
     background: #fff !important;
   }
 
-  /* Title at the top of the printed page */
+  /* Top row: בס"ד / date — only visible in print. */
+  .sheet__print-header {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.3cm;
+    font-family: 'Frank Ruhl Libre', serif;
+    font-size: 11pt;
+    color: #222;
+  }
+  .sheet__print-header-right { text-align: right; }
+  .sheet__print-header-left  { text-align: left; direction: ltr; }
+  .sheet__print-header:empty,
+  .sheet__print-header > span:empty { display: none; }
+
+  /* Title at the top of the printed page (after the chip row). */
   .sheet::before {
     content: attr(data-print-title);
     display: block;
@@ -123,14 +138,4 @@
 
   /* Hide number column when disabled */
   .sheet[data-show-numbering='false'] .source-card__number { display: none !important; }
-
-  /* Sefaria attribution footer on every printed page */
-  @page {
-    @bottom-center {
-      content: 'מקור: ספריא — sefaria.org';
-      font-family: 'Heebo', sans-serif;
-      font-size: 8pt;
-      color: #555;
-    }
-  }
 }

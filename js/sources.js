@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   fontSize: 14,
   showNumbering: true,
   showDividers: true,
+  showPageNumbers: false,
   margins: 'normal',
   printMode: 'color',
 });
@@ -25,6 +26,8 @@ export function createEmptySheet() {
     title: '',
     createdAt: now,
     updatedAt: now,
+    headerRight: 'בס"ד', // sticky top-right chip (Hashem-prefix)
+    headerLeft: '',       // sticky top-left chip (date or sub-title)
     settings: defaultSettings(),
     sources: [],
   };
@@ -62,6 +65,13 @@ export class Sheet {
 
   setTitle(title) {
     this.state.title = String(title || '');
+    this._emit();
+  }
+
+  setHeader(side, value) {
+    if (side !== 'right' && side !== 'left') return;
+    const key = side === 'right' ? 'headerRight' : 'headerLeft';
+    this.state[key] = String(value ?? '');
     this._emit();
   }
 
@@ -147,6 +157,21 @@ export class Sheet {
     this._emit();
     return true;
   }
+
+  /** Move `fromId` so it lands before / after `targetId`. Used by drag-and-drop. */
+  moveSourceTo(fromId, targetId, where = 'before') {
+    if (fromId === targetId) return false;
+    const sources = this.state.sources;
+    const fromIdx = sources.findIndex((s) => s.id === fromId);
+    if (fromIdx < 0) return false;
+    const [item] = sources.splice(fromIdx, 1);
+    let targetIdx = sources.findIndex((s) => s.id === targetId);
+    if (targetIdx < 0) { sources.splice(fromIdx, 0, item); return false; }
+    if (where === 'after') targetIdx += 1;
+    sources.splice(targetIdx, 0, item);
+    this._emit();
+    return true;
+  }
 }
 
 /** Normalize a possibly-partial sheet object loaded from storage. */
@@ -161,5 +186,7 @@ function normalize(sheet) {
   out.createdAt = out.createdAt || base.createdAt;
   out.updatedAt = out.updatedAt || base.updatedAt;
   out.title = typeof out.title === 'string' ? out.title : '';
+  out.headerRight = typeof sheet?.headerRight === 'string' ? sheet.headerRight : base.headerRight;
+  out.headerLeft  = typeof sheet?.headerLeft  === 'string' ? sheet.headerLeft  : base.headerLeft;
   return out;
 }

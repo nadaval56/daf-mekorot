@@ -186,6 +186,7 @@ const fontSel = $('[data-role="setting-font"]');
 const fontSizeSel = $('[data-role="setting-font-size"]');
 const numberingChk = $('[data-role="setting-numbering"]');
 const dividersChk = $('[data-role="setting-dividers"]');
+const pageNumbersChk = $('[data-role="setting-page-numbers"]');
 const marginsSel = $('[data-role="setting-margins"]');
 const printModeSel = $('[data-role="setting-print-mode"]');
 
@@ -195,6 +196,7 @@ function readSettingsFromForm() {
     fontSize: parseInt(fontSizeSel.value, 10) || 14,
     showNumbering: numberingChk.checked,
     showDividers: dividersChk.checked,
+    showPageNumbers: pageNumbersChk.checked,
     margins: marginsSel.value,
     printMode: printModeSel.value,
   };
@@ -206,6 +208,7 @@ function syncSettingsForm(settings) {
   fontSizeSel.value = String(s.fontSize);
   numberingChk.checked = s.showNumbering !== false;
   dividersChk.checked = s.showDividers !== false;
+  pageNumbersChk.checked = !!s.showPageNumbers;
   marginsSel.value = s.margins;
   printModeSel.value = s.printMode;
 }
@@ -221,7 +224,7 @@ function closeSettings() {
 }
 
 // Live-apply settings on change (no separate "save" button needed).
-for (const ctrl of [fontSel, fontSizeSel, numberingChk, dividersChk, marginsSel, printModeSel]) {
+for (const ctrl of [fontSel, fontSizeSel, numberingChk, dividersChk, pageNumbersChk, marginsSel, printModeSel]) {
   ctrl.addEventListener('change', () => {
     const next = readSettingsFromForm();
     sheet.updateSettings(next);

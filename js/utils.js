@@ -334,9 +334,9 @@ export function formatParsed(parsed) {
     case 'rambam': {
       // Category names include the "הלכות " prefix; strip so we don't double it.
       const topic = book.replace(/^הלכות\s+/, '');
-      if (!lv.length) return `הלכות ${topic} לרמב"ם`;
-      if (lv.length === 1) return `הלכות ${topic} לרמב"ם, פרק ${lv[0]}`;
-      return `הלכות ${topic} לרמב"ם, פרק ${lv[0]} הלכה ${lv[1]}`;
+      if (!lv.length) return `משנה תורה לרמב"ם, הלכות ${topic}`;
+      if (lv.length === 1) return `משנה תורה לרמב"ם, הלכות ${topic}, פרק ${lv[0]}`;
+      return `משנה תורה לרמב"ם, הלכות ${topic}, פרק ${lv[0]}, הלכה ${lv[1]}`;
     }
     case 'shulchan': {
       if (!lv.length) return `שולחן ערוך, ${book}`;
