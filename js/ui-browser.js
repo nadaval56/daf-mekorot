@@ -20,10 +20,28 @@ let tocPromise = null;
 function ensureTOC() {
   if (tocReady) return Promise.resolve();
   if (tocPromise) return tocPromise;
+  console.log('[TOC] loading /api/index from Sefaria…');
   tocPromise = fetchIndex()
-    .then((toc) => { walkTOC(toc, [], []); tocReady = true; })
+    .then((toc) => {
+      // Sefaria's /api/index returns either a top-level array of
+      // category nodes, or (in some variants) an object with a `tree`
+      // / `categories` field. Accept both.
+      const tree = Array.isArray(toc) ? toc
+        : (Array.isArray(toc?.tree) ? toc.tree
+        : (Array.isArray(toc?.categories) ? toc.categories
+        : null));
+      if (!tree) {
+        console.warn('[TOC] unexpected /api/index shape:', toc);
+        tocPromise = null;
+        return;
+      }
+      walkTOC(tree, [], []);
+      tocReady = true;
+      console.log(`[TOC] ready — ${tocBooks.length} books, ${tocCategoryMap.size} category-paths.`,
+        'sample categories:', [...tocCategoryMap.keys()].filter((k) => /[֐-׿]/.test(k)).slice(0, 8));
+    })
     .catch((err) => {
-      console.warn('[browser] TOC load failed; category search disabled:', err);
+      console.warn('[TOC] load failed — category search disabled:', err);
       tocPromise = null;
     });
   return tocPromise;
@@ -33,27 +51,28 @@ function walkTOC(nodes, pathEn, pathHe) {
   if (!Array.isArray(nodes)) return;
   for (const node of nodes) {
     if (!node) continue;
-    if (Array.isArray(node.contents)) {
+    if (Array.isArray(node.contents) && node.contents.length) {
       const newEn = [...pathEn, node.category || node.title || ''];
       const newHe = [...pathHe, node.heCategory || node.heTitle || node.category || ''];
       walkTOC(node.contents, newEn, newHe);
       continue;
     }
-    if (!node.title) continue;
-    const heTitle = node.heTitle || node.title;
+    // Leaf book — recognized via `title` (most cases) or `firstSection`
+    // (complex schema books).
+    const enTitle = node.title || node.firstSection;
+    if (!enTitle) continue;
+    const heTitle = node.heTitle || node.heFirstSection || enTitle;
     const prefix = categoryPrefixHe(pathEn);
     const displayHe = prefix ? `${prefix} ${heTitle}` : heTitle;
     const book = {
-      title: node.title,
+      title: enTitle,
       heTitle,
       displayHe,
       pathEn: pathEn.slice(),
       pathHe: pathHe.slice(),
-      ref: node.title,
+      ref: enTitle,
     };
     tocBooks.push(book);
-    // Index by every category-prefix combo (Hebrew and English) so that
-    // typing "תלמוד בבלי", "תלמוד", "בבלי", "משנה" all resolve.
     for (let i = 1; i <= pathHe.length; i++) {
       addToCategoryMap(pathHe.slice(0, i).join(' '), book);
       addToCategoryMap(pathEn.slice(0, i).join(' '), book);
@@ -295,12 +314,31 @@ export function initBrowser({ onAddSource, showToast }) {
     const q = input.value.trim();
     if (!q) return;
     suggestionsBox.hidden = true;
+
     // If the query exactly matches a category, show the category nav.
     if (tocReady && tocCategoryMap.has(q)) {
       navStack.length = 0;
       renderCategoryNav(q, tocCategoryMap.get(q));
       return;
     }
+
+    // If the query exactly matches a book name that appears in MULTIPLE
+    // categories (e.g. "סוכה" → Mishnah / Bavli / Yerushalmi), show the
+    // disambiguation list instead of going straight to the first hit.
+    if (tocReady) {
+      const matches = tocBooks.filter((b) => b.heTitle === q);
+      if (matches.length > 1) {
+        renderSuggestions(matches.map((b) => ({
+          type: 'ref', label: b.displayHe, ref: b.ref,
+        })));
+        return;
+      }
+      if (matches.length === 1) {
+        loadRef(matches[0].ref, { reset: true });
+        return;
+      }
+    }
+
     loadRef(q, { reset: true });
   });
 
