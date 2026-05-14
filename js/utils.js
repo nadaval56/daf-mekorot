@@ -481,6 +481,67 @@ export function truncate(text, max = 100) {
   return t.length > max ? t.slice(0, max).trimEnd() + '…' : t;
 }
 
+/**
+ * Replace divine-name letter sequences with their traditional "kinnui"
+ * dashed variants (e.g. יהוה → י-הוה). Preserves any nikud / cantillation
+ * sandwiched between the bare letters. Idempotent — running twice yields
+ * the same output because the second pass can no longer match the
+ * dash-separated form.
+ */
+export function applyHashemKinnui(text) {
+  if (!text) return text;
+  const N = '[֑-ׇ]*';            // any combining nikud / te'amim
+  let t = String(text);
+  // Order matters: do the longer names first so אלהים doesn't get
+  // caught by the bare-אל rule.
+  t = t.replace(new RegExp(`(י${N})(ה${N}ו${N}ה)`, 'g'),                      '$1-$2');
+  t = t.replace(new RegExp(`(א${N})(ל${N}ה${N}י${N}ם)`, 'g'),                  '$1-$2');
+  // אדני — same consonants as the architectural-sockets word
+  // (אַדְנֵי כֶסֶף, אֲדָנִים) and as the personal name אדניה(ו). Match
+  // ONLY the two unambiguous forms:
+  //   (a) Pointed divine vocalization — alef with chataf-patach (אֲ),
+  //       which never occurs on the sockets-word or the name.
+  //   (b) Bare unpointed "אדני" as a standalone word (no neighbouring
+  //       Hebrew letters), where there's no nikud to disambiguate.
+  // Both stop before any following Hebrew letter so אדניה/אדניהו stay.
+  t = t.replace(new RegExp(`(אֲ${N})(ד${N}נ${N}י)(?!${N}[א-ת])`, 'g'),  '$1-$2');
+  t = t.replace(/(?<![א-ת])אדני(?![א-ת])/g,                              'א-דני');
+  t = t.replace(new RegExp(`(צ${N}ב${N}א${N})(ו${N}ת)`, 'g'),                   '$1-$2');
+  // אל — disambiguate divine "אֵל" (with tsere) from the preposition
+  // "אֶל" (with segol = "to / towards"). With nikud the difference is
+  // unambiguous; without nikud the user accepts a transform.
+  const PREFIX = '[בהוכלמש]';
+  // (a) Pointed divine: tsere required immediately after the alef.
+  t = t.replace(
+    new RegExp(`(?<![א-ת]${N})((?:${PREFIX}${N}){0,3})(אֵ${N})(ל)(?!${N}[א-ת])`, 'g'),
+    '$1$2-$3'
+  );
+  // (b) Unpointed bare/prefixed "אל" — no nikud on the alef or lamed.
+  //     Hebrew-letter lookbehind/ahead still keeps ישראל / אלעזר safe.
+  t = t.replace(
+    new RegExp(`(?<![א-ת])((?:${PREFIX}){0,3})(א)(ל)(?![א-ת])`, 'g'),
+    '$1$2-$3'
+  );
+
+  // שדי → שד-י. Word boundary required. (Unpointed false positive on
+  // "שָׂדִי" = my field is theoretically possible but rare in practice.)
+  t = t.replace(
+    new RegExp(`(?<![א-ת]${N})(ש${N}ד${N})(י)(?!${N}[א-ת])`, 'g'),
+    '$1-$2'
+  );
+
+  // "אהיה אשר אהיה" → "אהי-ה אשר אהי-ה" — only as the complete phrase
+  // so we don't dash the common verb "אהיה" outside this divine name.
+  // The capture groups end after the yod's nikud, so the dash sits
+  // cleanly between yod (with any nikud) and the bare final ה.
+  t = t.replace(
+    new RegExp(`(א${N}ה${N}י${N})(ה${N}\\s+א${N}ש${N}ר${N}\\s+א${N}ה${N}י${N})(ה)`, 'g'),
+    '$1-$2-$3'
+  );
+
+  return t;
+}
+
 /* --------------------------------------------------------------
    Sefaria structural helpers — depth detection & sub-ref naming.
    -------------------------------------------------------------- */

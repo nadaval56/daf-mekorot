@@ -45,33 +45,35 @@
     background: #fff !important;
   }
 
-  /* Top row: בס"ד / date — only visible in print. */
+  /* Top row: בס"ד / date — only visible in print, FIRST line on page. */
   .sheet__print-header {
     display: flex !important;
     justify-content: space-between;
     align-items: baseline;
-    margin-bottom: 0.3cm;
+    margin: 0 0 0.3cm 0;
     font-family: 'Frank Ruhl Libre', serif;
     font-size: 11pt;
     color: #222;
   }
   .sheet__print-header-right { text-align: right; }
   .sheet__print-header-left  { text-align: left; direction: ltr; }
-  .sheet__print-header:empty,
   .sheet__print-header > span:empty { display: none; }
 
-  /* Title at the top of the printed page (after the chip row). */
-  .sheet::before {
-    content: attr(data-print-title);
-    display: block;
+  /* Title — sits BELOW the chip row but ABOVE the sources. */
+  .sheet__print-title {
+    display: block !important;
     text-align: center;
     font-family: 'Frank Ruhl Libre', serif;
     font-size: 18pt;
     font-weight: 700;
-    margin-bottom: 0.8cm;
+    margin: 0 0 0.8cm 0;
     padding-bottom: 0.3cm;
     border-bottom: 1px solid #000;
   }
+  /* Suppress the old pseudo-element title (it would appear *above* the
+     print-header because pseudo-elements render at the start of the
+     element they're on). */
+  .sheet::before { display: none !important; content: '' !important; }
 
   .source-list {
     gap: 0.7cm;
@@ -125,15 +127,6 @@
     background: transparent !important;
     padding: 0 !important;
     line-height: 1.7;
-  }
-
-  /* High-contrast B/W mode */
-  .sheet[data-print-mode='bw-high-contrast'] .source-card__title,
-  .sheet[data-print-mode='bw-high-contrast'] .source-card__text {
-    color: #000 !important;
-  }
-  .sheet[data-print-mode='bw-high-contrast'][data-show-dividers='true'] .source-card + .source-card {
-    border-top: 2px solid #000 !important;
   }
 
   /* Hide number column when disabled */

@@ -11,8 +11,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   showNumbering: true,
   showDividers: true,
   showPageNumbers: false,
+  replaceHashemName: false,
   margins: 'normal',
-  printMode: 'color',
 });
 
 export function defaultSettings() {
