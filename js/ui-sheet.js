@@ -2,7 +2,7 @@
 // Right panel: the source sheet — renders cards, wires inline editing,
 // and exposes a render(snapshot) function called whenever the model changes.
 
-import { $, el, debounce, formatDate } from './utils.js';
+import { $, el, debounce, formatDate, applyHashemKinnui } from './utils.js';
 
 export function initSheetUI({ sheet, showToast }) {
   const titleInput = $('[data-role="sheet-title"]');
@@ -56,7 +56,7 @@ export function initSheetUI({ sheet, showToast }) {
     sheetEl.dataset.showNumbering = String(s.showNumbering !== false);
     sheetEl.dataset.showDividers = String(s.showDividers !== false);
     sheetEl.dataset.margins = s.margins || 'normal';
-    sheetEl.dataset.printMode = s.printMode || 'color';
+    sheetEl.dataset.hashemKinnui = String(!!s.replaceHashemName);
     sheetEl.style.setProperty('--sheet-font-size', `${s.fontSize || 14}pt`);
 
     // Page numbers — inject @page rule dynamically when on.
@@ -73,7 +73,7 @@ export function initSheetUI({ sheet, showToast }) {
         }`
       : '';
 
-    // Print-only header row (בס"ד / date) — visible only in @media print.
+    // Print-only header row (בס"ד / date) — first row in print order.
     let printHead = sheetEl.querySelector('.sheet__print-header');
     if (!printHead) {
       printHead = document.createElement('div');
@@ -84,14 +84,24 @@ export function initSheetUI({ sheet, showToast }) {
     printHead.firstChild.textContent = snapshot.headerRight || '';
     printHead.lastChild.textContent = snapshot.headerLeft || '';
 
+    // Print-only title — sits BELOW the header row, ABOVE the sources.
+    let printTitle = sheetEl.querySelector('.sheet__print-title');
+    if (!printTitle) {
+      printTitle = document.createElement('div');
+      printTitle.className = 'sheet__print-title';
+      printHead.after(printTitle);
+    }
+    printTitle.textContent = snapshot.title || 'דף מקורות';
+
     // Empty state vs source list.
     const hasSources = snapshot.sources.length > 0;
     emptyEl.hidden = hasSources;
     listEl.hidden = !hasSources;
 
+    const useKinnui = !!s.replaceHashemName;
     listEl.innerHTML = '';
     snapshot.sources.forEach((source, idx) => {
-      listEl.appendChild(renderCard(source, idx + 1));
+      listEl.appendChild(renderCard(source, idx + 1, useKinnui));
     });
 
     metaSpan.textContent = buildMeta(snapshot);
@@ -106,8 +116,9 @@ export function initSheetUI({ sheet, showToast }) {
     return parts.join(' • ');
   }
 
-  function renderCard(source, number) {
+  function renderCard(source, number, useKinnui = false) {
     const isCustom = source.type === 'custom';
+    const displayText = useKinnui ? applyHashemKinnui(source.text || '') : (source.text || '');
 
     const dragHandle = el('span', {
       class: 'source-card__drag',
@@ -157,10 +168,8 @@ export function initSheetUI({ sheet, showToast }) {
       'aria-label': 'מחק מקור',
       text: '🗑',
       onclick: () => {
-        if (confirm('למחוק את המקור?')) {
-          sheet.removeSource(source.id);
-          showToast('המקור נמחק.');
-        }
+        sheet.removeSource(source.id);
+        showToast('המקור נמחק.');
       },
     });
 
@@ -173,12 +182,26 @@ export function initSheetUI({ sheet, showToast }) {
       contenteditable: 'true',
       spellcheck: 'false',
       'data-placeholder': isCustom ? 'הכנס את הטקסט כאן…' : 'טקסט המקור',
-      text: source.text || '',
+      text: displayText,
     });
-    const pushText = debounce(() => {
-      sheet.updateSource(source.id, { text: textEl.innerText });
-    }, 200);
-    textEl.addEventListener('input', pushText);
+    if (useKinnui) {
+      // While the kinnui toggle is on we show the dashed form in the
+      // editable area. To let the user edit the canonical text, swap
+      // to the original on focus and re-apply the kinnui on blur.
+      textEl.addEventListener('focus', () => {
+        textEl.textContent = source.text || '';
+      });
+      textEl.addEventListener('blur', () => {
+        const v = textEl.innerText;
+        sheet.updateSource(source.id, { text: v });
+        textEl.textContent = applyHashemKinnui(v);
+      });
+    } else {
+      const pushText = debounce(() => {
+        sheet.updateSource(source.id, { text: textEl.innerText });
+      }, 200);
+      textEl.addEventListener('input', pushText);
+    }
 
     const li = el('li', {
       class: 'source-card',

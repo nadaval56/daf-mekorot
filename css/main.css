@@ -155,27 +155,38 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.35rem;
 }
 .sheet-header-chip {
   flex: 0 1 auto;
   min-width: 5rem;
-  max-width: 12rem;
-  border: 1px dashed transparent;
-  background: transparent;
+  max-width: 14rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-soft);
   font-size: 0.85rem;
-  color: var(--color-text-soft);
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
+  color: var(--color-accent-strong);
+  padding: 0.25rem 0.7rem;
+  border-radius: 6px;
   font-family: var(--font-frank);
+  font-weight: 600;
+  cursor: text;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.sheet-header-chip:hover {
+  background: #fff;
+  border-color: var(--color-accent);
+}
+.sheet-header-chip:focus {
+  background: #fff;
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
 }
 .sheet-header-chip--right { text-align: right; }
 .sheet-header-chip--left  { text-align: left; direction: ltr; }
-.sheet-header-chip:hover,
-.sheet-header-chip:focus {
-  border-color: var(--color-border);
-  background: #fff;
-  outline: none;
+.sheet-header-chip::placeholder {
+  color: var(--color-muted);
+  font-weight: 400;
 }
 
 .sheet-title:hover,
@@ -198,9 +209,10 @@ body {
   position: relative;
 }
 
-/* The print-only top row (בס"ד / date) is hidden on screen — it
-   only renders in @media print (see print.css). */
-.sheet__print-header { display: none; }
+/* The print-only top row (בס"ד / date) and title are hidden on screen
+   — they only render in @media print (see print.css). */
+.sheet__print-header,
+.sheet__print-title { display: none; }
 
 .source-list {
   list-style: none;
@@ -493,6 +505,11 @@ body {
   gap: 0.4rem;
   flex-wrap: wrap;
 }
+/* Same row, but shown above the body — convenient for long sources. */
+.result-card__actions--top {
+  border-top: 0;
+  border-bottom: 1px solid var(--color-border-soft);
+}
 
 .result-card__head {
   display: grid !important;
@@ -587,6 +604,20 @@ body {
   color: var(--color-muted);
   padding: 0.6rem 0.85rem 0;
 }
+
+.browser__error {
+  border: 1px solid var(--color-danger);
+  background: #fbe8e8;
+  border-radius: var(--radius);
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.browser__error-title { font-weight: 700; color: var(--color-danger); }
+.browser__error-ref { font-family: var(--font-frank); }
+.browser__error-msg { font-size: 0.9rem; color: var(--color-text-soft); }
+.browser__error-hint { font-size: 0.85rem; color: var(--color-muted); }
 .nav-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
@@ -747,9 +778,17 @@ body {
   font-family: var(--font-frank);
   font-size: 0.95rem;
   line-height: 1.7;
-  white-space: pre-wrap;
   unicode-bidi: plaintext;
 }
+.related-item__sub-ref {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--color-accent-strong);
+  margin-bottom: 0.3rem;
+  border-bottom: 1px dashed var(--color-border);
+  padding-bottom: 0.2rem;
+}
+.related-item__sub-text { white-space: pre-wrap; }
 
 /* ----- Buttons ----- */
 

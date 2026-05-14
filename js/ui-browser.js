@@ -100,12 +100,39 @@ function curateTopLevelCategories() {
     if (enKey) tocCategoryMap.set(enKey, books);
   };
 
-  // Tanakh — flat list of all books (Torah / Prophets / Writings).
-  set('תנ"ך',  'Tanakh',  tocBooks.filter((b) => b.pathEn[0] === 'Tanakh' && b.pathEn.length === 3));
-  set('תנ״ך',  null,      tocCategoryMap.get('תנ"ך') || []);
+  // Tanakh — strict 24-book list (only Tanakh/Torah|Prophets|Writings/<book>).
+  const TANAKH_DIV = new Set(['Torah', 'Prophets', 'Writings']);
+  const tanakhBooks = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Tanakh' && TANAKH_DIV.has(b.pathEn[1]) && b.pathEn.length === 3
+  );
+  set('תנ"ך', 'Tanakh', tanakhBooks);
+  set('תנ״ך', null, tanakhBooks);
 
-  // Mishnah — Mishnah/<Seder>/<Masechet> i.e. depth-3 leaves.
-  set('משנה', 'Mishnah', tocBooks.filter((b) => b.pathEn[0] === 'Mishnah' && b.pathEn.length === 3));
+  // Tanakh commentary — separate category (Rashi/Rambam/Ibn Ezra/etc.).
+  const tanakhCommentary = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Tanakh' && b.pathEn.includes('Commentary')
+  );
+  set('פרשנות תנ"ך', 'Tanakh Commentary', tanakhCommentary);
+  set('פרשנות תנ״ך', null, tanakhCommentary);
+
+  // Mishnah — only the 6 sedarim's masechtot (Mishnah/Seder X/<Masechet>).
+  const MISHNAH_SEDERS = new Set([
+    'Seder Zeraim', 'Seder Moed', 'Seder Nashim',
+    'Seder Nezikin', 'Seder Kodashim', 'Seder Tahorot',
+  ]);
+  const mishnahBooks = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Mishnah' &&
+    MISHNAH_SEDERS.has(b.pathEn[1]) &&
+    b.pathEn.length === 3
+  );
+  set('משנה', 'Mishnah', mishnahBooks);
+
+  // Mishnah commentary — separate category (Bartenura, Yachin, Boaz,
+  // Tiferet Yisrael, …).
+  const mishnahCommentary = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Mishnah' && b.pathEn.includes('Commentary')
+  );
+  set('פרשנות משנה', 'Mishnah Commentary', mishnahCommentary);
 
   // Talmud Bavli — only the standard masechtot under Talmud/Bavli/Seder X.
   const bavliMain = tocBooks.filter((b) =>
@@ -126,8 +153,7 @@ function curateTopLevelCategories() {
   set('מסכתות קטנות', 'Minor Tractates', minor);
 
   // Halakhah / Mussar / Kabbalah / Chasidut / Midrash / Liturgy /
-  // Jewish Thought — top-level filters, no sub-filter (let everything
-  // under each top category show).
+  // Jewish Thought — let everything under each top category show.
   const HE_TOP = {
     'הלכה': 'Halakhah',
     'מוסר': 'Musar',
@@ -303,8 +329,10 @@ export function initBrowser({ onAddSource, showToast }) {
     if (!chipsBox || !tocReady) return;
     // Top-level categories the user typically wants in one click.
     const TOP = [
-      'תנ"ך', 'משנה', 'תלמוד בבלי', 'תלמוד ירושלמי',
-      'מסכתות קטנות', 'מדרש', 'הלכה', 'קבלה', 'חסידות',
+      'תנ"ך', 'פרשנות תנ"ך',
+      'משנה', 'פרשנות משנה',
+      'תלמוד בבלי', 'תלמוד ירושלמי', 'מסכתות קטנות',
+      'מדרש', 'הלכה', 'קבלה', 'חסידות',
       'מחשבת ישראל', 'מוסר', 'תוספתא', 'ליטורגיה',
     ];
     chipsBox.innerHTML = '';
@@ -427,15 +455,32 @@ export function initBrowser({ onAddSource, showToast }) {
     loadRef(q, { reset: true });
   });
 
-  /** Show all books in a category (e.g. "תלמוד בבלי" → list of masechtot). */
+  /** Show books in a category. For Mishnah specifically, surface the 6
+   *  sedarim first; click a seder → its masechtot. */
   function renderCategoryNav(categoryLabel, books) {
+    if (categoryLabel === 'משנה' || categoryLabel === 'Mishnah') {
+      return renderMishnahSedarimNav(categoryLabel, books);
+    }
+    renderFlatCategoryNav(categoryLabel, books);
+  }
+
+  function renderFlatCategoryNav(categoryLabel, books, prevCrumb = null) {
     emptyBox.hidden = true;
     resultBox.hidden = false;
     resultBox.innerHTML = '';
 
-    resultBox.appendChild(el('div', { class: 'crumbs' }, [
-      el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }),
-    ]));
+    // Optional back-to-parent crumb (e.g. coming from sedarim nav).
+    const crumbs = el('div', { class: 'crumbs' });
+    if (prevCrumb) {
+      crumbs.appendChild(el('button', {
+        type: 'button',
+        class: 'crumbs__back',
+        text: '← חזרה',
+        onclick: prevCrumb.onClick,
+      }));
+    }
+    crumbs.appendChild(el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }));
+    resultBox.appendChild(crumbs);
 
     const head = el('div', { class: 'result-card__head' }, [
       el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
@@ -451,6 +496,58 @@ export function initBrowser({ onAddSource, showToast }) {
         title: book.ref,
         onclick: () => loadRef(book.ref, {
           drillFrom: { ref: '__category__', heRef: categoryLabel, _books: books, _isCategory: true },
+        }),
+      }));
+    }
+    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
+  }
+
+  /** Mishnah top-level: 6 sedarim, each click → its masechtot. */
+  function renderMishnahSedarimNav(categoryLabel, books) {
+    const SEDER_HE = {
+      'Seder Zeraim':    'סדר זרעים',
+      'Seder Moed':      'סדר מועד',
+      'Seder Nashim':    'סדר נשים',
+      'Seder Nezikin':   'סדר נזיקין',
+      'Seder Kodashim':  'סדר קדשים',
+      'Seder Tahorot':   'סדר טהרות',
+    };
+    // Group the books by their seder (pathEn[1]).
+    const bySeder = new Map();
+    for (const b of books) {
+      const seder = b.pathEn[1];
+      if (!seder) continue;
+      if (!bySeder.has(seder)) bySeder.set(seder, []);
+      bySeder.get(seder).push(b);
+    }
+
+    emptyBox.hidden = true;
+    resultBox.hidden = false;
+    resultBox.innerHTML = '';
+
+    resultBox.appendChild(el('div', { class: 'crumbs' }, [
+      el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }),
+    ]));
+
+    const head = el('div', { class: 'result-card__head' }, [
+      el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
+      el('div', { class: 'result-card__category', text: `${bySeder.size} סדרים` }),
+    ]);
+    const hint = el('div', { class: 'browser__hint', text: 'בחר סדר:' });
+    const grid = el('div', { class: 'nav-grid' });
+    // Preserve the conventional order of the sedarim.
+    const ORDER = ['Seder Zeraim','Seder Moed','Seder Nashim','Seder Nezikin','Seder Kodashim','Seder Tahorot'];
+    for (const sederEn of ORDER) {
+      const masechtot = bySeder.get(sederEn);
+      if (!masechtot?.length) continue;
+      const sederHe = SEDER_HE[sederEn] || sederEn;
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: sederHe,
+        title: `${masechtot.length} מסכתות`,
+        onclick: () => renderFlatCategoryNav(`משנה — ${sederHe}`, masechtot, {
+          onClick: () => renderMishnahSedarimNav(categoryLabel, books),
         }),
       }));
     }
@@ -489,8 +586,18 @@ export function initBrowser({ onAddSource, showToast }) {
       const msg = err instanceof SefariaError ? err.message : 'אירעה שגיאה בשליפת המקור.';
       showToast(msg, 'error');
       console.warn('[browser] fetch failed:', err);
-      resultBox.hidden = true;
-      emptyBox.hidden = false;
+      // Render an inline error so the user knows which ref failed and
+      // can decide what to do (drill into a sub-section, retry, etc.).
+      emptyBox.hidden = true;
+      resultBox.hidden = false;
+      resultBox.innerHTML = '';
+      resultBox.appendChild(el('div', { class: 'browser__error' }, [
+        el('div', { class: 'browser__error-title', text: 'לא הצלחנו לטעון את המקור' }),
+        el('div', { class: 'browser__error-ref mixed-content', text: String(refOrName) }),
+        el('div', { class: 'browser__error-msg', text: msg }),
+        el('div', { class: 'browser__error-hint',
+          text: 'יתכן שספר זה דורש בחירת פרק / סעיף ספציפי. נסה חיפוש מפורט יותר.' }),
+      ]));
     } finally {
       setLoading(false);
     }
@@ -739,8 +846,10 @@ export function initBrowser({ onAddSource, showToast }) {
     });
     const selectionBar = buildSelectionBar(body, title, result);
     const actions = buildActions(title, heText, result);
+    const actionsTop = buildActions(title, heText, result);
+    actionsTop.classList.add('result-card__actions--top');
     const relatedPanel = buildRelatedPanel(result.ref);
-    return el('div', { class: 'result-card' }, [head, body, selectionBar, actions, relatedPanel]);
+    return el('div', { class: 'result-card' }, [head, actionsTop, body, selectionBar, actions, relatedPanel]);
   }
 
   /* -------------------- block view (Tanakh chapter, Bavli amud/daf) -------------------- */
@@ -769,7 +878,12 @@ export function initBrowser({ onAddSource, showToast }) {
         ]));
       }
       plainText = verses.map((v) => `${v.label} ${v.text}`).join('\n');
-      plainTextParagraph = verses.map((v) => v.text).join(' ');
+      // Paragraph mode: continuous flow with a period at the end of each
+      // verse if it doesn't already end in one (Sefaria texts usually
+      // end with sof-pasuq ׃, kept inline).
+      plainTextParagraph = verses
+        .map((v) => /[.?!׃:]$/.test(v.text) ? v.text : `${v.text}.`)
+        .join(' ');
     } else if (mode === 'bavli-daf') {
       // segments may be depth-2 ([amudA lines, amudB lines]) for "Sukkah 2",
       // or depth-1 if Sefaria returned the daf flattened. Handle both.
@@ -822,8 +936,12 @@ export function initBrowser({ onAddSource, showToast }) {
         },
       }));
     }
+    // Mirror the action row at the top of the card too — for long
+    // texts it saves scrolling all the way down to the add button.
+    const actionsTop = buildActions(title, plainText, result);
+    actionsTop.classList.add('result-card__actions--top');
     const relatedPanel = buildRelatedPanel(result.ref);
-    return el('div', { class: 'result-card' }, [head, body, selectionBar, actions, relatedPanel]);
+    return el('div', { class: 'result-card' }, [head, actionsTop, body, selectionBar, actions, relatedPanel]);
   }
 
   /* -------------------- Bavli book nav (daf-level grid) -------------------- */
@@ -1190,7 +1308,15 @@ export function initBrowser({ onAddSource, showToast }) {
       const result = await fetchText(parentRef);
       const text = cleanSefariaText(flattenSefariaText(result.hebrew)) ||
                    cleanSefariaText(flattenSefariaText(result.english));
-      body.textContent = text || '— אין טקסט זמין —';
+      // Render an explicit citation header inside the expanded body so
+      // the user can tell which work and which reference this snippet
+      // belongs to (e.g. "אור לשמים, לך לך, ה'" instead of just "לך לך").
+      body.textContent = '';
+      const fullCitation = displayTitleFor(result);
+      if (fullCitation) {
+        body.appendChild(el('div', { class: 'related-item__sub-ref mixed-content', text: fullCitation }));
+      }
+      body.appendChild(el('div', { class: 'related-item__sub-text', text: text || '— אין טקסט זמין —' }));
       body.dataset.loaded = 'true';
       body.dataset.text = text;
       body.dataset.ref = result.ref || parentRef;

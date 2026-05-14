@@ -187,8 +187,8 @@ const fontSizeSel = $('[data-role="setting-font-size"]');
 const numberingChk = $('[data-role="setting-numbering"]');
 const dividersChk = $('[data-role="setting-dividers"]');
 const pageNumbersChk = $('[data-role="setting-page-numbers"]');
+const hashemKinnuiChk = $('[data-role="setting-hashem-kinnui"]');
 const marginsSel = $('[data-role="setting-margins"]');
-const printModeSel = $('[data-role="setting-print-mode"]');
 
 function readSettingsFromForm() {
   return {
@@ -197,8 +197,8 @@ function readSettingsFromForm() {
     showNumbering: numberingChk.checked,
     showDividers: dividersChk.checked,
     showPageNumbers: pageNumbersChk.checked,
+    replaceHashemName: !!hashemKinnuiChk?.checked,
     margins: marginsSel.value,
-    printMode: printModeSel.value,
   };
 }
 
@@ -209,8 +209,8 @@ function syncSettingsForm(settings) {
   numberingChk.checked = s.showNumbering !== false;
   dividersChk.checked = s.showDividers !== false;
   pageNumbersChk.checked = !!s.showPageNumbers;
+  if (hashemKinnuiChk) hashemKinnuiChk.checked = !!s.replaceHashemName;
   marginsSel.value = s.margins;
-  printModeSel.value = s.printMode;
 }
 
 function openSettings() {
@@ -224,7 +224,7 @@ function closeSettings() {
 }
 
 // Live-apply settings on change (no separate "save" button needed).
-for (const ctrl of [fontSel, fontSizeSel, numberingChk, dividersChk, pageNumbersChk, marginsSel, printModeSel]) {
+for (const ctrl of [fontSel, fontSizeSel, numberingChk, dividersChk, pageNumbersChk, hashemKinnuiChk, marginsSel].filter(Boolean)) {
   ctrl.addEventListener('change', () => {
     const next = readSettingsFromForm();
     sheet.updateSettings(next);
