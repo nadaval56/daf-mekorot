@@ -110,12 +110,31 @@ function curateTopLevelCategories() {
   set('תנ"ך', 'Tanakh', tanakhBooks);
   set('תנ״ך', null, tanakhBooks);
 
-  // Tanakh commentary — separate category (Rashi/Rambam/Ibn Ezra/etc.).
-  const tanakhCommentary = tocBooks.filter((b) =>
-    b.pathEn[0] === 'Tanakh' && b.pathEn.includes('Commentary')
+  // Tanakh commentary — Sefaria's TOC layout varies. The path may use
+  // "Commentary", "Modern Commentary", "Quoting Commentary", or the
+  // commentaries may sit at top level (e.g. just "Rashi"). We try the
+  // path-based filters first; if nothing matches, fall back to a title
+  // heuristic — books under Tanakh whose Hebrew title contains "על"
+  // (the "<commentator> על <book>" pattern).
+  let tanakhCommentary = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Tanakh' &&
+    b.pathEn.some((p) => /Commentary/i.test(p))
   );
+  if (!tanakhCommentary.length) {
+    tanakhCommentary = tocBooks.filter((b) =>
+      b.pathEn[0] === 'Tanakh' && / על /.test(b.heTitle || '')
+    );
+  }
+  console.log(`[TOC] Tanakh commentary: ${tanakhCommentary.length} books`);
   set('פרשנות תנ"ך', 'Tanakh Commentary', tanakhCommentary);
   set('פרשנות תנ״ך', null, tanakhCommentary);
+
+  // For diagnostics: what's actually under Tanakh in this TOC?
+  const tanakhSubs = new Set();
+  for (const b of tocBooks) {
+    if (b.pathEn[0] === 'Tanakh' && b.pathEn[1]) tanakhSubs.add(b.pathEn[1]);
+  }
+  console.log('[TOC] Tanakh sub-categories present:', [...tanakhSubs]);
 
   // Mishnah — only the 6 sedarim's masechtot (Mishnah/Seder X/<Masechet>).
   const MISHNAH_SEDERS = new Set([
@@ -129,11 +148,16 @@ function curateTopLevelCategories() {
   );
   set('משנה', 'Mishnah', mishnahBooks);
 
-  // Mishnah commentary — separate category (Bartenura, Yachin, Boaz,
-  // Tiferet Yisrael, …).
-  const mishnahCommentary = tocBooks.filter((b) =>
-    b.pathEn[0] === 'Mishnah' && b.pathEn.includes('Commentary')
+  // Mishnah commentary — same multi-strategy as Tanakh commentary.
+  let mishnahCommentary = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Mishnah' && b.pathEn.some((p) => /Commentary/i.test(p))
   );
+  if (!mishnahCommentary.length) {
+    mishnahCommentary = tocBooks.filter((b) =>
+      b.pathEn[0] === 'Mishnah' && / על /.test(b.heTitle || '')
+    );
+  }
+  console.log(`[TOC] Mishnah commentary: ${mishnahCommentary.length} books`);
   set('פרשנות משנה', 'Mishnah Commentary', mishnahCommentary);
 
   // Talmud Bavli — only the standard masechtot under Talmud/Bavli/Seder X.
