@@ -370,7 +370,9 @@ function extendParsedWithSeg(parsed, segIndex, segAddressType) {
   const levels = [...(parsed.levels || [])];
   if (parsed.kind === 'bavli' && segAddressType === 'Talmud') {
     // Drilling from whole tractate into an amud: contributes daf+amud (2 levels).
-    const daf = numToHebrewLetters(2 + Math.floor(segIndex / 2));
+    // Sefaria stores Bavli with placeholders for daf 1 at indices 0,1;
+    // real daf 2 sits at indices 2,3, so the mapping is i/2 + 1.
+    const daf = numToHebrewLetters(1 + Math.floor(segIndex / 2));
     const amud = segIndex % 2 === 0 ? 'א' : 'ב';
     levels.push(presentHebrewLetters(daf), amud);
   } else {
@@ -496,18 +498,24 @@ export function textDepth(value) {
 }
 
 /**
- * Convert a 0-indexed daf/amud position to Hebrew label.
- *   0 → "ב ע״א", 1 → "ב ע״ב", 2 → "ג ע״א", ...
+ * Convert a 0-indexed amud position (within Sefaria's Bavli array, where
+ * indices 0 and 1 are placeholders for the non-existent daf 1) to a
+ * Hebrew label. So index 0 → "א ע״א" (placeholder, never shown), index 2
+ * → "ב ע״א" (= 2a, the real first daf), etc.
  */
 export function talmudHeLabel(index) {
-  const dafNum = 2 + Math.floor(index / 2);
+  const dafNum = 1 + Math.floor(index / 2);
   const sideHe = index % 2 === 0 ? 'ע״א' : 'ע״ב';
   return `${numToHebrewLetters(dafNum)} ${sideHe}`;
 }
 
-/** Convert a 0-indexed daf/amud position to Sefaria's English suffix: "2a", "2b". */
+/**
+ * Convert a 0-indexed amud position to Sefaria's English daf suffix
+ * (e.g. index 2 → "2a", 3 → "2b", 4 → "3a"). Indices 0 and 1 map to
+ * the empty "1a"/"1b" placeholder, in line with Sefaria's data shape.
+ */
 export function talmudEnLabel(index) {
-  const dafNum = 2 + Math.floor(index / 2);
+  const dafNum = 1 + Math.floor(index / 2);
   const side = index % 2 === 0 ? 'a' : 'b';
   return `${dafNum}${side}`;
 }
