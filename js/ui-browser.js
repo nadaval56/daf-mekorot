@@ -7,7 +7,126 @@
 import { $, el, debounce, truncate, textDepth, buildSubRef, subSectionHeLabel,
          numToHebrewLetters, presentHebrewLetters } from './utils.js';
 import { cleanSefariaText, flattenSefariaText, formatMarehMakom, parseHeRef, buildSegmentCitation } from './utils.js';
-import { lookupName, fetchText, fetchRelated, SefariaError } from './sefaria-api.js';
+import { lookupName, fetchText, fetchRelated, fetchIndex, SefariaError } from './sefaria-api.js';
+
+/* -------------------- Sefaria TOC (loaded lazily, used for category
+   search + disambiguation) -------------------- */
+
+const tocBooks = [];
+const tocCategoryMap = new Map();   // 'תלמוד בבלי' / 'Mishnah' → books[]
+let tocReady = false;
+let tocPromise = null;
+
+function ensureTOC() {
+  if (tocReady) return Promise.resolve();
+  if (tocPromise) return tocPromise;
+  tocPromise = fetchIndex()
+    .then((toc) => { walkTOC(toc, [], []); tocReady = true; })
+    .catch((err) => {
+      console.warn('[browser] TOC load failed; category search disabled:', err);
+      tocPromise = null;
+    });
+  return tocPromise;
+}
+
+function walkTOC(nodes, pathEn, pathHe) {
+  if (!Array.isArray(nodes)) return;
+  for (const node of nodes) {
+    if (!node) continue;
+    if (Array.isArray(node.contents)) {
+      const newEn = [...pathEn, node.category || node.title || ''];
+      const newHe = [...pathHe, node.heCategory || node.heTitle || node.category || ''];
+      walkTOC(node.contents, newEn, newHe);
+      continue;
+    }
+    if (!node.title) continue;
+    const heTitle = node.heTitle || node.title;
+    const prefix = categoryPrefixHe(pathEn);
+    const displayHe = prefix ? `${prefix} ${heTitle}` : heTitle;
+    const book = {
+      title: node.title,
+      heTitle,
+      displayHe,
+      pathEn: pathEn.slice(),
+      pathHe: pathHe.slice(),
+      ref: node.title,
+    };
+    tocBooks.push(book);
+    // Index by every category-prefix combo (Hebrew and English) so that
+    // typing "תלמוד בבלי", "תלמוד", "בבלי", "משנה" all resolve.
+    for (let i = 1; i <= pathHe.length; i++) {
+      addToCategoryMap(pathHe.slice(0, i).join(' '), book);
+      addToCategoryMap(pathEn.slice(0, i).join(' '), book);
+    }
+  }
+}
+
+function addToCategoryMap(key, book) {
+  if (!key) return;
+  if (!tocCategoryMap.has(key)) tocCategoryMap.set(key, []);
+  tocCategoryMap.get(key).push(book);
+}
+
+function categoryPrefixHe(pathEn) {
+  if (pathEn[0] === 'Mishnah') return 'משנה';
+  if (pathEn[0] === 'Talmud' && pathEn[1] === 'Bavli') return 'תלמוד בבלי';
+  if (pathEn[0] === 'Talmud' && pathEn[1] === 'Yerushalmi') return 'תלמוד ירושלמי';
+  return '';
+}
+
+/**
+ * Local TOC search. Returns a mix of {type:'category', label, books}
+ * (a category like "תלמוד בבלי" — click → grid of masechtot) and
+ * {type:'ref', label, ref} (a specific book).
+ */
+function searchLocalTOC(query) {
+  const q = query.trim();
+  if (!q || !tocReady) return [];
+  const out = [];
+  const seen = new Set();
+
+  // 1. Exact category name → category navigator.
+  if (tocCategoryMap.has(q)) {
+    out.push({ type: 'category', label: q, books: tocCategoryMap.get(q) });
+  }
+
+  // 2. Composite "<category> <book>" e.g. "תלמוד בבלי סוכה" → direct ref.
+  const parts = q.split(/\s+/);
+  for (let i = parts.length - 1; i > 0; i--) {
+    const catKey = parts.slice(0, i).join(' ');
+    const bookKey = parts.slice(i).join(' ');
+    const cands = tocCategoryMap.get(catKey);
+    if (!cands) continue;
+    for (const book of cands) {
+      if (book.heTitle === bookKey && !seen.has(book.ref)) {
+        seen.add(book.ref);
+        out.push({ type: 'ref', label: book.displayHe, ref: book.ref });
+      }
+    }
+  }
+
+  // 3. Exact book name → all matches across categories (disambiguation).
+  for (const book of tocBooks) {
+    if (book.heTitle === q && !seen.has(book.ref)) {
+      seen.add(book.ref);
+      out.push({ type: 'ref', label: book.displayHe, ref: book.ref });
+    }
+  }
+
+  // 4. Prefix matches.
+  if (out.length < 10) {
+    for (const book of tocBooks) {
+      if (out.length >= 10) break;
+      if (seen.has(book.ref)) continue;
+      if (book.heTitle.startsWith(q) || book.displayHe.startsWith(q)) {
+        seen.add(book.ref);
+        out.push({ type: 'ref', label: book.displayHe, ref: book.ref });
+      }
+    }
+  }
+
+  return out;
+}
 
 /**
  * Hebrew name for the segmentation unit at depth N (1 = bottom-most leaf
@@ -97,6 +216,10 @@ export function initBrowser({ onAddSource, showToast }) {
   const navStack = [];
   let currentResult = null;
 
+  // Kick off TOC load in the background so the first category-search
+  // attempt is fast.
+  ensureTOC();
+
   /* -------------------- autocomplete -------------------- */
 
   function renderSuggestions(items) {
@@ -112,7 +235,12 @@ export function initBrowser({ onAddSource, showToast }) {
         onclick: () => {
           suggestionsBox.hidden = true;
           input.value = item.label;
-          loadRef(item.ref, { reset: true });
+          if (item.type === 'category') {
+            navStack.length = 0;
+            renderCategoryNav(item.label, item.books);
+          } else {
+            loadRef(item.ref, { reset: true });
+          }
         },
       });
       suggestionsBox.appendChild(btn);
@@ -123,16 +251,33 @@ export function initBrowser({ onAddSource, showToast }) {
   const onType = debounce(async () => {
     const q = input.value.trim();
     if (q.length < 2) { renderSuggestions([]); return; }
+
+    // Make sure local TOC is loading (no-op if already loaded).
+    ensureTOC();
+
     if (activeLookup) activeLookup.abort();
     activeLookup = new AbortController();
+
+    // Sefaria's /api/name and the local TOC are queried in parallel.
+    let api = [];
     try {
-      const items = await lookupName(q, { signal: activeLookup.signal });
-      renderSuggestions(items.slice(0, 8));
+      api = await lookupName(q, { signal: activeLookup.signal });
     } catch (err) {
       if (err?.name === 'AbortError') return;
       console.warn('[browser] lookup failed:', err);
-      renderSuggestions([]);
     }
+
+    const local = searchLocalTOC(q);
+    // Combine: local matches first (category nodes + disambiguated book
+    // names), then API matches we haven't already covered.
+    const seen = new Set(local.map((s) => s.ref || `cat:${s.label}`));
+    for (const a of api) {
+      const key = a.ref || `cat:${a.label}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      local.push(a);
+    }
+    renderSuggestions(local.slice(0, 12));
   }, 220);
 
   input.addEventListener('input', onType);
@@ -150,8 +295,44 @@ export function initBrowser({ onAddSource, showToast }) {
     const q = input.value.trim();
     if (!q) return;
     suggestionsBox.hidden = true;
+    // If the query exactly matches a category, show the category nav.
+    if (tocReady && tocCategoryMap.has(q)) {
+      navStack.length = 0;
+      renderCategoryNav(q, tocCategoryMap.get(q));
+      return;
+    }
     loadRef(q, { reset: true });
   });
+
+  /** Show all books in a category (e.g. "תלמוד בבלי" → list of masechtot). */
+  function renderCategoryNav(categoryLabel, books) {
+    emptyBox.hidden = true;
+    resultBox.hidden = false;
+    resultBox.innerHTML = '';
+
+    resultBox.appendChild(el('div', { class: 'crumbs' }, [
+      el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }),
+    ]));
+
+    const head = el('div', { class: 'result-card__head' }, [
+      el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
+      el('div', { class: 'result-card__category', text: `${books.length} ספרים` }),
+    ]);
+    const hint = el('div', { class: 'browser__hint', text: 'בחר ספר:' });
+    const grid = el('div', { class: 'nav-grid' });
+    for (const book of books) {
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: book.heTitle,
+        title: book.ref,
+        onclick: () => loadRef(book.ref, {
+          drillFrom: { ref: '__category__', heRef: categoryLabel, _books: books, _isCategory: true },
+        }),
+      }));
+    }
+    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
+  }
 
   /* -------------------- loading + rendering -------------------- */
 
@@ -262,6 +443,17 @@ export function initBrowser({ onAddSource, showToast }) {
     }
   }
 
+  /** Reload a navStack entry. Handles both ref entries and the special
+   *  "_isCategory" entry that points back to a category navigator. */
+  function reloadStackEntry(entry) {
+    if (!entry) return;
+    if (entry._isCategory) {
+      renderCategoryNav(entry.heRef, entry._books);
+    } else {
+      loadRef(entry.ref);
+    }
+  }
+
   function renderBreadcrumb(result) {
     const crumbs = el('div', { class: 'crumbs' });
 
@@ -272,7 +464,7 @@ export function initBrowser({ onAddSource, showToast }) {
         text: '← חזרה',
         onclick: () => {
           const prev = navStack.pop();
-          if (prev) loadRef(prev.ref);
+          reloadStackEntry(prev);
         },
       });
       crumbs.appendChild(back);
@@ -290,7 +482,7 @@ export function initBrowser({ onAddSource, showToast }) {
           const idx = navStack.indexOf(item);
           if (idx < 0) return;
           navStack.length = idx;
-          loadRef(item.ref);
+          reloadStackEntry(item);
         },
       });
       path.appendChild(link);

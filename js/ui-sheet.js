@@ -29,6 +29,7 @@ export function initSheetUI({ sheet, showToast }) {
     sheetEl.dataset.font = s.font || 'Frank Ruhl Libre';
     sheetEl.dataset.fontSize = String(s.fontSize || 14);
     sheetEl.dataset.showNumbering = String(s.showNumbering !== false);
+    sheetEl.dataset.showDividers = String(s.showDividers !== false);
     sheetEl.dataset.margins = s.margins || 'normal';
     sheetEl.dataset.printMode = s.printMode || 'color';
     sheetEl.style.setProperty('--sheet-font-size', `${s.fontSize || 14}pt`);

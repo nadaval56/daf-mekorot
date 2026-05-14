@@ -311,9 +311,12 @@ export function formatParsed(parsed) {
       return `${book}, פרק ${lv[0]}, פסוק ${lv[1]} (${lv.slice(2).join(':')})`;
     }
     case 'mishnah': {
-      if (!lv.length) return book;
-      if (lv.length === 1) return `${book}, פרק ${lv[0]}`;
-      return `${book}, פרק ${lv[0]} משנה ${lv[1]}`;
+      // Always prefix with "משנה" so a Mishnah tractate doesn't share a
+      // bare display name with the Bavli/Yerushalmi tractate of the same
+      // word (e.g. "ברכות" → "משנה ברכות").
+      if (!lv.length) return `משנה ${book}`;
+      if (lv.length === 1) return `משנה ${book}, פרק ${lv[0]}`;
+      return `משנה ${book}, פרק ${lv[0]} משנה ${lv[1]}`;
     }
     case 'bavli': {
       if (!lv.length) return book;

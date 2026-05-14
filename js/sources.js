@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   font: 'Frank Ruhl Libre',
   fontSize: 14,
   showNumbering: true,
+  showDividers: true,
   margins: 'normal',
   printMode: 'color',
 });

@@ -68,12 +68,16 @@
     border-radius: 0 !important;
     padding: 0 !important;
     background: #fff !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    /* Allow long sources to overflow to the next page rather than
+       leaving the previous page blank when they don't fit. */
   }
 
-  .source-card + .source-card {
+  /* Divider line between sources — gated by the user setting. */
+  .sheet[data-show-dividers='true'] .source-card + .source-card {
     border-top: 1px solid #999 !important;
+    padding-top: 0.5cm !important;
+  }
+  .sheet[data-show-dividers='false'] .source-card + .source-card {
     padding-top: 0.5cm !important;
   }
 
