@@ -23,8 +23,21 @@
   .panel__head,
   .sheet__footer,
   .source-card__actions,
+  .source-card__drag,
   .modal,
   .toast { display: none !important; }
+
+  /* Smart page-break: keep the source title with the first lines of
+     its body. Without this a page can end with a lone title and push
+     the whole text to the next page. */
+  .source-card__head {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .source-card__text {
+    widows: 3;
+    orphans: 3;
+  }
 
   body { display: block; }
   .app-main { display: block; padding: 0; }
