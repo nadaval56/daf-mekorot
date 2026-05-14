@@ -43,10 +43,37 @@ export function stripHTML(text) {
 export function cleanSefariaText(rawText) {
   if (!rawText) return '';
   let text = stripHTML(String(rawText));
+  text = decodeHTMLEntities(text);
+  // Parsha break markers in Tanakh ({פ}=open, {ס}=closed, {ש}/{ר}=others).
+  text = text.replace(/\{[פסשרת]\}/g, ' ');
   text = removeTeamim(text);
-  // Collapse runs of whitespace.
-  text = text.replace(/[ \t ]+/g, ' ').trim();
+  // Collapse runs of whitespace including non-breaking + thin spaces.
+  text = text.replace(/[\s  -​]+/g, ' ').trim();
   return text;
+}
+
+/**
+ * Decode the common HTML entities Sefaria leaves in its text: &nbsp;,
+ * &thinsp;, &amp; / &lt; / &gt; / &quot;, plus numeric &#NN; / &#xNN;.
+ * Not a complete entity decoder — but covers everything we've seen.
+ */
+export function decodeHTMLEntities(s) {
+  if (!s) return s;
+  return String(s)
+    .replace(/&nbsp;/gi,    ' ')
+    .replace(/&thinsp;/gi,  ' ')
+    .replace(/&ensp;/gi,    ' ')
+    .replace(/&emsp;/gi,    ' ')
+    .replace(/&zwj;/gi,     '')
+    .replace(/&zwnj;/gi,    '')
+    .replace(/&shy;/gi,     '')
+    .replace(/&amp;/gi,     '&')
+    .replace(/&lt;/gi,      '<')
+    .replace(/&gt;/gi,      '>')
+    .replace(/&quot;/gi,    '"')
+    .replace(/&apos;/gi,    "'")
+    .replace(/&#(\d+);/g,            (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g,   (_, n) => String.fromCharCode(parseInt(n, 16)));
 }
 
 /**
