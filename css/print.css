@@ -72,12 +72,15 @@
        leaving the previous page blank when they don't fit. */
   }
 
-  /* Divider line between sources — gated by the user setting. */
+  /* Divider line between sources — gated by the user setting.
+     Use border-top: 0 explicitly in the "off" case so it wins against
+     any later rule that might set a border (e.g. bw-high-contrast). */
   .sheet[data-show-dividers='true'] .source-card + .source-card {
     border-top: 1px solid #999 !important;
     padding-top: 0.5cm !important;
   }
   .sheet[data-show-dividers='false'] .source-card + .source-card {
+    border-top: 0 !important;
     padding-top: 0.5cm !important;
   }
 
@@ -114,7 +117,7 @@
   .sheet[data-print-mode='bw-high-contrast'] .source-card__text {
     color: #000 !important;
   }
-  .sheet[data-print-mode='bw-high-contrast'] .source-card + .source-card {
+  .sheet[data-print-mode='bw-high-contrast'][data-show-dividers='true'] .source-card + .source-card {
     border-top: 2px solid #000 !important;
   }
 
