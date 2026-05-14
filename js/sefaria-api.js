@@ -109,6 +109,8 @@ export async function fetchText(ref, { signal } = {}) {
     sectionNames: data?.sectionNames || [],
     heSectionNames: data?.heSectionNames || [],
     addressTypes: data?.addressTypes || [],
+    sections: Array.isArray(data?.sections) ? data.sections : [],
+    toSections: Array.isArray(data?.toSections) ? data.toSections : [],
     next: refOf(data?.next),
     prev: refOf(data?.prev),
     hebrew: heVersion?.text ?? data?.he ?? '',

@@ -16,7 +16,7 @@ import { lookupName, fetchText, fetchRelated, SefariaError } from './sefaria-api
  * defaults to "פרק", a Mishnah perek listing segments defaults to "משנה",
  * etc., never to a hard-coded "פסוק".
  */
-function defaultSegNameFor(parsed, depth = 1) {
+function defaultSegNameFor(kindOrParsed, depth = 1) {
   const tables = {
     tanakh:     ['פסוק', 'פרק'],
     mishnah:    ['משנה', 'פרק'],
@@ -26,10 +26,39 @@ function defaultSegNameFor(parsed, depth = 1) {
     shulchan:   ['סעיף', 'סימן'],
     tur:        ['סעיף', 'סימן'],
   };
-  if (!parsed) return 'חלק';
-  const table = tables[parsed.kind];
+  const kind = typeof kindOrParsed === 'string' ? kindOrParsed : kindOrParsed?.kind;
+  if (!kind) return 'חלק';
+  const table = tables[kind];
   if (!table) return 'חלק';
   return table[depth - 1] || table[table.length - 1] || 'חלק';
+}
+
+/**
+ * Reliable kind detection using Sefaria's stable ENGLISH categories
+ * (`Tanakh`, `Talmud`, `Bavli`, `Mishnah`, `Halakhah`, `Mishneh Torah`,
+ * `Shulchan Arukh`, `Tur`, `Commentary`, `Targum`). Hebrew categories
+ * vary in spelling/encoding across responses; English is consistent.
+ */
+function detectKind(result) {
+  const cats = result?.categories || [];
+  if (cats.includes('Tanakh')) {
+    if (cats.includes('Commentary')) return 'commentary';
+    if (cats.includes('Targum')) return 'targum';
+    return 'tanakh';
+  }
+  if (cats.includes('Talmud')) {
+    if (cats.includes('Yerushalmi')) return 'yerushalmi';
+    return 'bavli';
+  }
+  if (cats.includes('Mishnah')) return 'mishnah';
+  if (cats.includes('Halakhah')) {
+    if (cats.includes('Mishneh Torah') || cats.some((c) => /Rambam/i.test(c))) return 'rambam';
+    if (cats.includes('Shulchan Arukh')) return 'shulchan';
+    if (cats.includes('Tur')) return 'tur';
+  }
+  if (cats.includes('Commentary')) return 'commentary';
+  if (cats.includes('Targum')) return 'targum';
+  return null;
 }
 
 /**
@@ -173,7 +202,10 @@ export function initBrowser({ onAddSource, showToast }) {
 
   /** Top-level render — chooses leaf / block / segments / nav-grid by both
    *  text depth AND citation kind (so a Tanakh chapter renders as a whole
-   *  block while a Mishnah chapter splits into mishnayot). */
+   *  block while a Mishnah chapter splits into mishnayot).
+   *  Kind comes from Sefaria's stable English `categories`; the navigation
+   *  level comes from `result.sections.length` (also stable). The Hebrew
+   *  heRef parsing was unreliable for whole-book / range refs. */
   function renderResult(result) {
     emptyBox.hidden = true;
     resultBox.hidden = false;
@@ -181,42 +213,52 @@ export function initBrowser({ onAddSource, showToast }) {
 
     resultBox.appendChild(renderBreadcrumb(result));
 
-    const parsed = parseHeRef(result.heRef, result.heCategories);
-    const depth = textDepth(result.hebrew);
+    const kind = detectKind(result);
+    const sectionDepth = result.sections?.length ?? 0; // 0 = whole book, 1 = chapter/daf, …
+    const textD = textDepth(result.hebrew);
 
     // Bavli: book → daf grid; daf → whole-daf block (both amudim joined);
     // amud → whole-amud block; line → leaf.
-    if (parsed?.kind === 'bavli') {
-      if (parsed.levels.length === 0 && depth >= 2) {
+    if (kind === 'bavli') {
+      if (sectionDepth === 0 && textD >= 2) {
         resultBox.appendChild(renderBavliBookNav(result));
         return;
       }
-      if (parsed.levels.length === 1) {
-        resultBox.appendChild(renderBlockView(result, { mode: 'bavli-daf' }));
+      if (sectionDepth === 1) {
+        resultBox.appendChild(renderBlockView(result, { mode: 'bavli-daf', kind }));
         return;
       }
-      if (parsed.levels.length === 2 && depth >= 1) {
-        resultBox.appendChild(renderBlockView(result, { mode: 'bavli-amud' }));
+      if (sectionDepth === 2 && textD >= 1) {
+        resultBox.appendChild(renderBlockView(result, { mode: 'bavli-amud', kind }));
         return;
       }
-      // levels.length >= 3 or depth 0 → leaf
       resultBox.appendChild(renderLeaf(result));
       return;
     }
 
-    // Tanakh chapter → whole-chapter block with verse numbers inline.
-    if (parsed?.kind === 'tanakh' && parsed.levels.length === 1 && depth >= 1) {
-      resultBox.appendChild(renderBlockView(result, { mode: 'tanakh-chapter' }));
+    // Tanakh: book → chapter grid; chapter → whole-chapter block with
+    // inline verse numbers; verse → leaf.
+    if (kind === 'tanakh') {
+      if (sectionDepth === 1 && textD >= 1) {
+        resultBox.appendChild(renderBlockView(result, { mode: 'tanakh-chapter', kind }));
+        return;
+      }
+      if (sectionDepth === 0 && textD >= 2) {
+        resultBox.appendChild(renderMultiSection(result, textD, kind));
+        return;
+      }
+      resultBox.appendChild(renderLeaf(result));
       return;
     }
 
-    // Everything else: depth-driven.
-    if (depth === 0) {
+    // Mishnah / Yerushalmi / Mishneh Torah / SA / Tur / Commentary / Targum
+    // / unknown: depth-driven (segments for chapter, nav-grid for book).
+    if (textD === 0) {
       resultBox.appendChild(renderLeaf(result));
-    } else if (depth === 1) {
-      resultBox.appendChild(renderSection(result));
+    } else if (textD === 1) {
+      resultBox.appendChild(renderSection(result, kind));
     } else {
-      resultBox.appendChild(renderMultiSection(result, depth));
+      resultBox.appendChild(renderMultiSection(result, textD, kind));
     }
   }
 
@@ -485,11 +527,12 @@ export function initBrowser({ onAddSource, showToast }) {
 
   /* -------------------- section view (depth 1) -------------------- */
 
-  function renderSection(result) {
+  function renderSection(result, kind = null) {
     const segments = Array.isArray(result.hebrew) ? result.hebrew : [];
     const title = displayTitleFor(result);
     const parsed = parseHeRef(result.heRef, result.heCategories);
-    const heSectionName = (result.heSectionNames || []).slice(-1)[0] || defaultSegNameFor(parsed);
+    const effectiveKind = kind || parsed?.kind || null;
+    const heSectionName = (result.heSectionNames || []).slice(-1)[0] || defaultSegNameFor(effectiveKind, 1);
     const lastAddressType = (result.addressTypes || []).slice(-1)[0] || 'Integer';
 
     // Combined text (entire section) for the "add all" button.
@@ -562,11 +605,12 @@ export function initBrowser({ onAddSource, showToast }) {
 
   /* -------------------- multi-section view (depth ≥ 2) -------------------- */
 
-  function renderMultiSection(result, depth) {
+  function renderMultiSection(result, depth, kind = null) {
     const arr = Array.isArray(result.hebrew) ? result.hebrew : [];
     const parsed = parseHeRef(result.heRef, result.heCategories);
+    const effectiveKind = kind || parsed?.kind || null;
     const sectionNameIdx = (result.heSectionNames?.length || 0) - depth;
-    const heSectionName = (result.heSectionNames || [])[sectionNameIdx] || defaultSegNameFor(parsed, depth);
+    const heSectionName = (result.heSectionNames || [])[sectionNameIdx] || defaultSegNameFor(effectiveKind, depth);
     const addressType = (result.addressTypes || [])[sectionNameIdx] || 'Integer';
 
     const head = buildCardHead(result);
