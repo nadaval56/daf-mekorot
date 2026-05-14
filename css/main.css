@@ -172,22 +172,58 @@ body {
   cursor: text;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
-.sheet-header-chip:hover {
-  background: #fff;
-  border-color: var(--color-accent);
-}
-.sheet-header-chip:focus {
-  background: #fff;
-  border-color: var(--color-accent);
-  outline: none;
-  box-shadow: 0 0 0 2px var(--color-accent-soft);
-}
-.sheet-header-chip--right { text-align: right; }
+.sheet-header-chip:hover { background: #fff; border-color: var(--color-accent); }
+.sheet-header-chip:focus-within { background: #fff; border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-soft); }
+.sheet-header-chip--right { text-align: right; position: relative; padding: 0; }
 .sheet-header-chip--left  { text-align: left; direction: ltr; }
-.sheet-header-chip::placeholder {
-  color: var(--color-muted);
-  font-weight: 400;
+.sheet-header-chip::placeholder { color: var(--color-muted); font-weight: 400; }
+
+/* בס"ד chip — button-triggered dropdown */
+.sheet-header-chip__button {
+  background: transparent;
+  border: 0;
+  padding: 0.25rem 0.7rem;
+  width: 100%;
+  text-align: right;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-accent-strong);
+  cursor: pointer;
+  border-radius: 6px;
 }
+.sheet-header-chip__button--empty { color: var(--color-muted); }
+.sheet-header-chip__button::after {
+  content: '▾';
+  margin-inline-start: 0.35em;
+  color: var(--color-muted);
+  font-size: 0.7em;
+}
+.sheet-header-chip__menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+  z-index: 20;
+  min-width: 8rem;
+}
+.sheet-header-chip__menu li button {
+  width: 100%;
+  text-align: right;
+  background: transparent;
+  border: 0;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-text);
+}
+.sheet-header-chip__menu li button:hover { background: var(--color-bg-soft); }
 
 .sheet-title:hover,
 .sheet-title:focus {

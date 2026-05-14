@@ -463,9 +463,9 @@ export function initBrowser({ onAddSource, showToast }) {
     if (categoryLabel === 'משנה' || categoryLabel === 'Mishnah') {
       return renderMishnahSedarimNav(categoryLabel, books);
     }
-    // Tanakh: keep flat (24 unique books).
+    // Tanakh: show its three traditional divisions first, then drill in.
     if (categoryLabel === 'תנ"ך' || categoryLabel === 'תנ״ך' || categoryLabel === 'Tanakh') {
-      return renderFlatCategoryNav(categoryLabel, books);
+      return renderTanakhDivisionsNav(categoryLabel, books);
     }
     // Everything else: try hierarchical (group by the first varying
     // path segment). Falls through to flat if there's only one group.
@@ -533,7 +533,7 @@ export function initBrowser({ onAddSource, showToast }) {
       crumbsEl.appendChild(el('button', {
         type: 'button',
         class: 'crumbs__back',
-        text: '← חזרה',
+        text: '→ חזרה',
         onclick: prevCrumbs[prevCrumbs.length - 1].onClick,
       }));
     }
@@ -573,7 +573,7 @@ export function initBrowser({ onAddSource, showToast }) {
       crumbs.appendChild(el('button', {
         type: 'button',
         class: 'crumbs__back',
-        text: '← חזרה',
+        text: '→ חזרה',
         onclick: prevCrumb.onClick,
       }));
     }
@@ -646,6 +646,48 @@ export function initBrowser({ onAddSource, showToast }) {
         title: `${masechtot.length} מסכתות`,
         onclick: () => renderFlatCategoryNav(`משנה — ${sederHe}`, masechtot, {
           onClick: () => renderMishnahSedarimNav(categoryLabel, books),
+        }),
+      }));
+    }
+    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
+  }
+
+  /** Tanakh top-level: 3 traditional divisions, each click → its books. */
+  function renderTanakhDivisionsNav(categoryLabel, books) {
+    const DIV_HE = { Torah: 'תורה', Prophets: 'נביאים', Writings: 'כתובים' };
+    const byDivision = new Map();
+    for (const b of books) {
+      const div = b.pathEn[1];
+      if (!div) continue;
+      if (!byDivision.has(div)) byDivision.set(div, []);
+      byDivision.get(div).push(b);
+    }
+
+    emptyBox.hidden = true;
+    resultBox.hidden = false;
+    resultBox.innerHTML = '';
+
+    resultBox.appendChild(el('div', { class: 'crumbs' }, [
+      el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }),
+    ]));
+
+    const head = el('div', { class: 'result-card__head' }, [
+      el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
+      el('div', { class: 'result-card__category', text: `${byDivision.size} חלקים` }),
+    ]);
+    const hint = el('div', { class: 'browser__hint', text: 'בחר חלק:' });
+    const grid = el('div', { class: 'nav-grid' });
+    for (const divEn of ['Torah', 'Prophets', 'Writings']) {
+      const list = byDivision.get(divEn);
+      if (!list?.length) continue;
+      const divHe = DIV_HE[divEn] || divEn;
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: divHe,
+        title: `${list.length} ספרים`,
+        onclick: () => renderFlatCategoryNav(`תנ"ך — ${divHe}`, list, {
+          onClick: () => renderTanakhDivisionsNav(categoryLabel, books),
         }),
       }));
     }
@@ -857,7 +899,7 @@ export function initBrowser({ onAddSource, showToast }) {
       const back = el('button', {
         type: 'button',
         class: 'crumbs__back',
-        text: '← חזרה',
+        text: '→ חזרה',
         onclick: () => {
           const prev = navStack.pop();
           reloadStackEntry(prev);
@@ -939,7 +981,7 @@ export function initBrowser({ onAddSource, showToast }) {
       el('button', {
         type: 'button',
         class: 'btn btn--primary btn--small',
-        text: '← הוסף קטע נבחר',
+        text: '→ הוסף קטע נבחר',
         onclick: () => {
           const sel = window.getSelection();
           const text = sel ? sel.toString().trim() : '';
@@ -967,7 +1009,7 @@ export function initBrowser({ onAddSource, showToast }) {
     const addBtn = el('button', {
       type: 'button',
       class: 'btn btn--primary btn--small',
-      text: '← הוסף לדף',
+      text: '→ הוסף לדף',
       onclick: () => {
         if (!text) { showToast('אין טקסט להוסיף.', 'error'); return; }
         onAddSource({
@@ -1090,7 +1132,7 @@ export function initBrowser({ onAddSource, showToast }) {
       actions.appendChild(el('button', {
         type: 'button',
         class: 'btn btn--ghost btn--small',
-        text: '← הוסף כפסקה (ללא מספרי פסוקים)',
+        text: '→ הוסף כפסקה (ללא מספרי פסוקים)',
         onclick: () => {
           onAddSource({
             title,
@@ -1174,7 +1216,7 @@ export function initBrowser({ onAddSource, showToast }) {
     const addAllBtn = el('button', {
       type: 'button',
       class: 'btn btn--primary btn--small',
-      text: '← הוסף את כל הקטע',
+      text: '→ הוסף את כל הקטע',
       onclick: () => {
         if (!fullText) { showToast('אין טקסט להוסיף.', 'error'); return; }
         onAddSource({
@@ -1212,7 +1254,7 @@ export function initBrowser({ onAddSource, showToast }) {
       const addBtn = el('button', {
         type: 'button',
         class: 'btn btn--primary btn--small',
-        text: '← הוסף',
+        text: '→ הוסף',
         onclick: () => {
           onAddSource({
             title: segTitle,
@@ -1351,7 +1393,7 @@ export function initBrowser({ onAddSource, showToast }) {
       const addAll = el('button', {
         type: 'button',
         class: 'btn btn--ghost btn--small related-group__add-all',
-        text: `← הוסף את כל ${group.def.he}`,
+        text: `→ הוסף את כל ${group.def.he}`,
         onclick: () => addAllInGroup(group, parentRef),
       });
       details.appendChild(addAll);
@@ -1473,7 +1515,7 @@ export function initBrowser({ onAddSource, showToast }) {
     const addBtn = el('button', {
       type: 'button',
       class: 'btn btn--primary btn--small',
-      text: '← הוסף',
+      text: '→ הוסף',
       onclick: () => addAggregateToSheet(group),
     });
 
