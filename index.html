@@ -8,6 +8,11 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
+    <meta name="description" content="כלי עזר להכנת דפי מקורות, מבוסס ספריא" />
+    <meta property="og:title" content="דף מקורות" />
+    <meta property="og:description" content="כלי עזר להכנת דפי מקורות, מבוסס ספריא" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
     <title>דף מקורות</title>
     <meta name="description" content="כלי לבניית דפי מקורות עם אינטגרציה לספריא — מורי שיעורי שבת ומחנכים בחינוך תורני." />
 
@@ -50,13 +55,17 @@
       <section class="panel panel--sheet" aria-label="דף המקורות">
         <div class="panel__head">
           <div class="sheet-toprow">
-            <input
-              type="text"
-              class="sheet-header-chip sheet-header-chip--right"
-              data-role="sheet-header-right"
-              placeholder='בס"ד'
-              aria-label='קידומת ימנית למעלה (בס"ד / ב"ה / לק"י / מותאם)'
-            />
+            <div class="sheet-header-chip sheet-header-chip--right" data-role="sheet-header-right-wrap">
+              <button type="button" class="sheet-header-chip__button"
+                      data-role="sheet-header-right-button"
+                      aria-haspopup="true"
+                      aria-label='קידומת ימנית למעלה'>בס"ד</button>
+              <ul class="sheet-header-chip__menu" data-role="sheet-header-right-menu" hidden>
+                <li><button type="button" data-value='בס"ד'>בס"ד</button></li>
+                <li><button type="button" data-action="custom">אחר…</button></li>
+                <li><button type="button" data-value="">השאר ריק</button></li>
+              </ul>
+            </div>
             <input
               type="text"
               class="sheet-header-chip sheet-header-chip--left"

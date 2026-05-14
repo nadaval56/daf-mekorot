@@ -6,7 +6,8 @@ import { $, el, debounce, formatDate, applyHashemKinnui } from './utils.js';
 
 export function initSheetUI({ sheet, showToast }) {
   const titleInput = $('[data-role="sheet-title"]');
-  const headerRightInput = $('[data-role="sheet-header-right"]');
+  const headerRightButton = $('[data-role="sheet-header-right-button"]');
+  const headerRightMenu   = $('[data-role="sheet-header-right-menu"]');
   const headerLeftInput  = $('[data-role="sheet-header-left"]');
   const metaSpan = $('[data-role="sheet-meta"]');
   const sheetEl = $('[data-role="sheet"]');
@@ -23,10 +24,32 @@ export function initSheetUI({ sheet, showToast }) {
   const pushTitle = debounce((val) => sheet.setTitle(val), 150);
   titleInput.addEventListener('input', () => pushTitle(titleInput.value));
 
-  if (headerRightInput) {
-    const pushR = debounce((v) => sheet.setHeader('right', v), 150);
-    headerRightInput.addEventListener('input', () => pushR(headerRightInput.value));
+  // בס"ד / Hashem-prefix dropdown — button + small menu.
+  if (headerRightButton && headerRightMenu) {
+    headerRightButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      headerRightMenu.hidden = !headerRightMenu.hidden;
+    });
+    document.addEventListener('click', (e) => {
+      if (!headerRightMenu.contains(e.target) && e.target !== headerRightButton) {
+        headerRightMenu.hidden = true;
+      }
+    });
+    headerRightMenu.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'custom') {
+        const current = sheet.snapshot().headerRight || '';
+        const v = window.prompt('הזן טקסט לכותרת הימנית (לדוגמה: ב"ה, לק"י, ב"ה ירושלים…):', current);
+        if (v != null) sheet.setHeader('right', v);
+      } else if ('value' in btn.dataset) {
+        sheet.setHeader('right', btn.dataset.value || '');
+      }
+      headerRightMenu.hidden = true;
+    });
   }
+
   if (headerLeftInput) {
     const pushL = debounce((v) => sheet.setHeader('left', v), 150);
     headerLeftInput.addEventListener('input', () => pushL(headerLeftInput.value));
@@ -37,8 +60,10 @@ export function initSheetUI({ sheet, showToast }) {
     if (document.activeElement !== titleInput) {
       titleInput.value = snapshot.title || '';
     }
-    if (headerRightInput && document.activeElement !== headerRightInput) {
-      headerRightInput.value = snapshot.headerRight ?? '';
+    if (headerRightButton) {
+      const v = snapshot.headerRight ?? '';
+      headerRightButton.textContent = v || '—';
+      headerRightButton.classList.toggle('sheet-header-chip__button--empty', !v);
     }
     if (headerLeftInput && document.activeElement !== headerLeftInput) {
       headerLeftInput.value = snapshot.headerLeft ?? '';
