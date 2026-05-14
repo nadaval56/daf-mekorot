@@ -14,6 +14,7 @@ import { lookupName, fetchText, fetchRelated, fetchIndex, fetchIndexFor, Sefaria
 
 const tocBooks = [];
 const tocCategoryMap = new Map();   // 'תלמוד בבלי' / 'Mishnah' → books[]
+let tocRawTree = null;              // raw /api/index tree — drives tree-based nav
 let tocReady = false;
 let tocPromise = null;
 
@@ -23,9 +24,6 @@ function ensureTOC() {
   console.log('[TOC] loading /api/index from Sefaria…');
   tocPromise = fetchIndex()
     .then((toc) => {
-      // Sefaria's /api/index returns either a top-level array of
-      // category nodes, or (in some variants) an object with a `tree`
-      // / `categories` field. Accept both.
       const tree = Array.isArray(toc) ? toc
         : (Array.isArray(toc?.tree) ? toc.tree
         : (Array.isArray(toc?.categories) ? toc.categories
@@ -35,6 +33,7 @@ function ensureTOC() {
         tocPromise = null;
         return;
       }
+      tocRawTree = tree;
       walkTOC(tree, [], []);
       curateTopLevelCategories();
       tocReady = true;
@@ -46,6 +45,62 @@ function ensureTOC() {
       tocPromise = null;
     });
   return tocPromise;
+}
+
+/* -------------------- Tree-based category navigation --------------------
+   Sefaria's /api/index is a nested tree. We render it literally — each
+   click drills into the *actual* children of the current node rather
+   than into a heuristic groupBy of flat books. This avoids the earlier
+   bug where books like "Aggadat Bereshit" or "Shulchan Arukh, הקדמה"
+   (which Sefaria models as leaves) were being treated as parent cubes
+   by the synthetic grouping logic. */
+
+/** Walk down `pathEn` to find the corresponding tree node. */
+function findTreeNodeByPath(pathEn) {
+  if (!tocRawTree || !Array.isArray(pathEn) || !pathEn.length) return null;
+  let nodes = tocRawTree;
+  let node = null;
+  for (const seg of pathEn) {
+    if (!Array.isArray(nodes)) return null;
+    node = nodes.find((n) => n && (n.category === seg || n.title === seg));
+    if (!node) return null;
+    nodes = node.contents;
+  }
+  return node;
+}
+
+/** Find a tree node by Hebrew label (heCategory or heTitle). */
+function findTreeNodeByHeLabel(label) {
+  if (!tocRawTree || !label) return null;
+  const queue = [...tocRawTree];
+  while (queue.length) {
+    const node = queue.shift();
+    if (!node) continue;
+    if (node.heCategory === label || node.heTitle === label) return node;
+    if (Array.isArray(node.contents)) queue.push(...node.contents);
+  }
+  return null;
+}
+
+/** Longest common English path prefix across a list of books. */
+function commonPathEn(books) {
+  if (!books?.length) return [];
+  const first = books[0].pathEn;
+  let n = first.length;
+  for (const b of books.slice(1)) {
+    for (let i = 0; i < n; i++) {
+      if (b.pathEn[i] !== first[i]) { n = i; break; }
+    }
+    if (n === 0) break;
+  }
+  return first.slice(0, n);
+}
+
+/** Is this tree node a leaf book (no children, has a title)? */
+function isLeafBook(node) {
+  if (!node) return false;
+  if (Array.isArray(node.contents) && node.contents.length) return false;
+  return !!(node.title || node.firstSection);
 }
 
 function walkTOC(nodes, pathEn, pathHe) {
@@ -110,12 +165,31 @@ function curateTopLevelCategories() {
   set('תנ"ך', 'Tanakh', tanakhBooks);
   set('תנ״ך', null, tanakhBooks);
 
-  // Tanakh commentary — separate category (Rashi/Rambam/Ibn Ezra/etc.).
-  const tanakhCommentary = tocBooks.filter((b) =>
-    b.pathEn[0] === 'Tanakh' && b.pathEn.includes('Commentary')
+  // Tanakh commentary — Sefaria's TOC layout varies. The path may use
+  // "Commentary", "Modern Commentary", "Quoting Commentary", or the
+  // commentaries may sit at top level (e.g. just "Rashi"). We try the
+  // path-based filters first; if nothing matches, fall back to a title
+  // heuristic — books under Tanakh whose Hebrew title contains "על"
+  // (the "<commentator> על <book>" pattern).
+  let tanakhCommentary = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Tanakh' &&
+    b.pathEn.some((p) => /Commentary/i.test(p))
   );
+  if (!tanakhCommentary.length) {
+    tanakhCommentary = tocBooks.filter((b) =>
+      b.pathEn[0] === 'Tanakh' && / על /.test(b.heTitle || '')
+    );
+  }
+  console.log(`[TOC] Tanakh commentary: ${tanakhCommentary.length} books`);
   set('פרשנות תנ"ך', 'Tanakh Commentary', tanakhCommentary);
   set('פרשנות תנ״ך', null, tanakhCommentary);
+
+  // For diagnostics: what's actually under Tanakh in this TOC?
+  const tanakhSubs = new Set();
+  for (const b of tocBooks) {
+    if (b.pathEn[0] === 'Tanakh' && b.pathEn[1]) tanakhSubs.add(b.pathEn[1]);
+  }
+  console.log('[TOC] Tanakh sub-categories present:', [...tanakhSubs]);
 
   // Mishnah — only the 6 sedarim's masechtot (Mishnah/Seder X/<Masechet>).
   const MISHNAH_SEDERS = new Set([
@@ -129,11 +203,16 @@ function curateTopLevelCategories() {
   );
   set('משנה', 'Mishnah', mishnahBooks);
 
-  // Mishnah commentary — separate category (Bartenura, Yachin, Boaz,
-  // Tiferet Yisrael, …).
-  const mishnahCommentary = tocBooks.filter((b) =>
-    b.pathEn[0] === 'Mishnah' && b.pathEn.includes('Commentary')
+  // Mishnah commentary — same multi-strategy as Tanakh commentary.
+  let mishnahCommentary = tocBooks.filter((b) =>
+    b.pathEn[0] === 'Mishnah' && b.pathEn.some((p) => /Commentary/i.test(p))
   );
+  if (!mishnahCommentary.length) {
+    mishnahCommentary = tocBooks.filter((b) =>
+      b.pathEn[0] === 'Mishnah' && / על /.test(b.heTitle || '')
+    );
+  }
+  console.log(`[TOC] Mishnah commentary: ${mishnahCommentary.length} books`);
   set('פרשנות משנה', 'Mishnah Commentary', mishnahCommentary);
 
   // Talmud Bavli — only the standard masechtot under Talmud/Bavli/Seder X.
@@ -457,21 +536,87 @@ export function initBrowser({ onAddSource, showToast }) {
     loadRef(q, { reset: true });
   });
 
-  /** Show books in a category. For Mishnah specifically, surface the 6
-   *  sedarim first; for categories with deep hierarchy (פרשנות תנ"ך,
-   *  מדרש, הלכה, קבלה, ...) auto-group into sub-cubes by the first
-   *  varying path segment. Tanakh stays flat (every book unique). */
+  /** Top-level category navigation. Prefers Sefaria's raw TOC tree
+   *  (so each click drills into the actual children Sefaria defines);
+   *  falls back to synthetic book-grouping for categories we built
+   *  ourselves (פרשנות תנ"ך / פרשנות משנה / מסכתות קטנות). */
   function renderCategoryNav(categoryLabel, books) {
-    if (categoryLabel === 'משנה' || categoryLabel === 'Mishnah') {
-      return renderMishnahSedarimNav(categoryLabel, books);
+    // 1. Try the literal Sefaria tree first. If the chip's books all
+    //    share a common English path prefix, walk to that node and
+    //    show its direct children — this gives "Midrash → מדרשי הלכה
+    //    → ספרי/ספרא/מכילתא" instead of the older heuristic groupings.
+    const path = commonPathEn(books);
+    const node = path.length ? findTreeNodeByPath(path) : null;
+    if (node && Array.isArray(node.contents) && node.contents.length) {
+      renderTreeNode(node, categoryLabel, null);
+      return;
     }
-    // Tanakh: show its three traditional divisions first, then drill in.
-    if (categoryLabel === 'תנ"ך' || categoryLabel === 'תנ״ך' || categoryLabel === 'Tanakh') {
-      return renderTanakhDivisionsNav(categoryLabel, books);
-    }
-    // Everything else: try hierarchical (group by the first varying
-    // path segment). Falls through to flat if there's only one group.
+    // 2. Synthetic categories (פרשנות תנ"ך etc.) have no tree node;
+    //    fall through to grouped book listing.
     renderHierarchicalCategoryNav(categoryLabel, books);
+  }
+
+  /** Render the immediate children of a Sefaria TOC node.
+   *  Sub-category children become navigation cubes (click drills in);
+   *  leaf-book children load via loadRef. Books that ARE also a
+   *  category container (rare but happens) get both behaviours. */
+  function renderTreeNode(node, label = null, prevCrumb = null) {
+    const heLabel = label || node.heCategory || node.heTitle || node.category || node.title || '';
+    const contents = Array.isArray(node.contents) ? node.contents : [];
+
+    emptyBox.hidden = true;
+    resultBox.hidden = false;
+    resultBox.innerHTML = '';
+
+    const crumbs = el('div', { class: 'crumbs' });
+    if (prevCrumb) {
+      crumbs.appendChild(el('button', {
+        type: 'button',
+        class: 'crumbs__back',
+        text: '→ חזרה',
+        onclick: prevCrumb.onClick,
+      }));
+    }
+    crumbs.appendChild(el('span', { class: 'crumbs__current mixed-content', text: heLabel }));
+    resultBox.appendChild(crumbs);
+
+    // Empty content shouldn't usually happen — protect against it.
+    if (!contents.length) {
+      // If the node itself is a book, just load it.
+      if (node.title) {
+        loadRef(node.title, { reset: true });
+        return;
+      }
+      resultBox.appendChild(el('div', { class: 'browser__error' }, [
+        el('div', { text: 'אין תוכן זמין לקטגוריה זו.' }),
+      ]));
+      return;
+    }
+
+    const head = el('div', { class: 'result-card__head' }, [
+      el('div', { class: 'result-card__title mixed-content', text: heLabel }),
+      el('div', { class: 'result-card__category', text: `${contents.length} פריטים` }),
+    ]);
+    const hint = el('div', { class: 'browser__hint', text: 'בחר:' });
+    const grid = el('div', { class: 'nav-grid' });
+
+    for (const child of contents) {
+      if (!child) continue;
+      const isCategory = Array.isArray(child.contents) && child.contents.length > 0;
+      const heLabelChild = child.heCategory || child.heTitle || child.category || child.title || '?';
+      grid.appendChild(el('button', {
+        type: 'button',
+        class: 'nav-grid__item mixed-content',
+        text: heLabelChild,
+        title: child.title || child.category || '',
+        onclick: isCategory
+          ? () => renderTreeNode(child, null, { onClick: () => renderTreeNode(node, label, prevCrumb) })
+          : () => loadRef(child.title || child.firstSection, {
+              drillFrom: { ref: '__category__', heRef: heLabel, _isCategory: true, _node: node },
+            }),
+      }));
+    }
+    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
   }
 
   /** Compute the depth at which the books' paths first diverge.
@@ -593,100 +738,6 @@ export function initBrowser({ onAddSource, showToast }) {
         title: book.ref,
         onclick: () => loadRef(book.ref, {
           drillFrom: { ref: '__category__', heRef: categoryLabel, _books: books, _isCategory: true },
-        }),
-      }));
-    }
-    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
-  }
-
-  /** Mishnah top-level: 6 sedarim, each click → its masechtot. */
-  function renderMishnahSedarimNav(categoryLabel, books) {
-    const SEDER_HE = {
-      'Seder Zeraim':    'סדר זרעים',
-      'Seder Moed':      'סדר מועד',
-      'Seder Nashim':    'סדר נשים',
-      'Seder Nezikin':   'סדר נזיקין',
-      'Seder Kodashim':  'סדר קדשים',
-      'Seder Tahorot':   'סדר טהרות',
-    };
-    // Group the books by their seder (pathEn[1]).
-    const bySeder = new Map();
-    for (const b of books) {
-      const seder = b.pathEn[1];
-      if (!seder) continue;
-      if (!bySeder.has(seder)) bySeder.set(seder, []);
-      bySeder.get(seder).push(b);
-    }
-
-    emptyBox.hidden = true;
-    resultBox.hidden = false;
-    resultBox.innerHTML = '';
-
-    resultBox.appendChild(el('div', { class: 'crumbs' }, [
-      el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }),
-    ]));
-
-    const head = el('div', { class: 'result-card__head' }, [
-      el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
-      el('div', { class: 'result-card__category', text: `${bySeder.size} סדרים` }),
-    ]);
-    const hint = el('div', { class: 'browser__hint', text: 'בחר סדר:' });
-    const grid = el('div', { class: 'nav-grid' });
-    // Preserve the conventional order of the sedarim.
-    const ORDER = ['Seder Zeraim','Seder Moed','Seder Nashim','Seder Nezikin','Seder Kodashim','Seder Tahorot'];
-    for (const sederEn of ORDER) {
-      const masechtot = bySeder.get(sederEn);
-      if (!masechtot?.length) continue;
-      const sederHe = SEDER_HE[sederEn] || sederEn;
-      grid.appendChild(el('button', {
-        type: 'button',
-        class: 'nav-grid__item mixed-content',
-        text: sederHe,
-        title: `${masechtot.length} מסכתות`,
-        onclick: () => renderFlatCategoryNav(`משנה — ${sederHe}`, masechtot, {
-          onClick: () => renderMishnahSedarimNav(categoryLabel, books),
-        }),
-      }));
-    }
-    resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
-  }
-
-  /** Tanakh top-level: 3 traditional divisions, each click → its books. */
-  function renderTanakhDivisionsNav(categoryLabel, books) {
-    const DIV_HE = { Torah: 'תורה', Prophets: 'נביאים', Writings: 'כתובים' };
-    const byDivision = new Map();
-    for (const b of books) {
-      const div = b.pathEn[1];
-      if (!div) continue;
-      if (!byDivision.has(div)) byDivision.set(div, []);
-      byDivision.get(div).push(b);
-    }
-
-    emptyBox.hidden = true;
-    resultBox.hidden = false;
-    resultBox.innerHTML = '';
-
-    resultBox.appendChild(el('div', { class: 'crumbs' }, [
-      el('span', { class: 'crumbs__current mixed-content', text: categoryLabel }),
-    ]));
-
-    const head = el('div', { class: 'result-card__head' }, [
-      el('div', { class: 'result-card__title mixed-content', text: categoryLabel }),
-      el('div', { class: 'result-card__category', text: `${byDivision.size} חלקים` }),
-    ]);
-    const hint = el('div', { class: 'browser__hint', text: 'בחר חלק:' });
-    const grid = el('div', { class: 'nav-grid' });
-    for (const divEn of ['Torah', 'Prophets', 'Writings']) {
-      const list = byDivision.get(divEn);
-      if (!list?.length) continue;
-      const divHe = DIV_HE[divEn] || divEn;
-      grid.appendChild(el('button', {
-        type: 'button',
-        class: 'nav-grid__item mixed-content',
-        text: divHe,
-        title: `${list.length} ספרים`,
-        onclick: () => renderFlatCategoryNav(`תנ"ך — ${divHe}`, list, {
-          onClick: () => renderTanakhDivisionsNav(categoryLabel, books),
         }),
       }));
     }
@@ -885,7 +936,9 @@ export function initBrowser({ onAddSource, showToast }) {
   function reloadStackEntry(entry) {
     if (!entry) return;
     if (entry._isCategory) {
-      renderCategoryNav(entry.heRef, entry._books);
+      if (entry._node) renderTreeNode(entry._node, entry.heRef);
+      else if (entry._books) renderCategoryNav(entry.heRef, entry._books);
+      else if (typeof entry._onBack === 'function') entry._onBack();
     } else {
       loadRef(entry.ref);
     }
