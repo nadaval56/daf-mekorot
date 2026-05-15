@@ -407,6 +407,30 @@ export function initBrowser({ onAddSource, showToast }) {
   ensureTOC().then(() => renderCategoryChips());
 
   const chipsBox = $('[data-role="category-chips"]');
+  const chipsWrap = $('[data-role="chips-wrap"]');
+  const chipsToggle = $('[data-role="chips-toggle"]');
+
+  // Mobile-only: the chips row is hidden behind a "קטגוריות ▾" toggle to
+  // save vertical space (see css/mobile.css). On desktop the toggle is
+  // display:none and chips are always visible, so this logic is a no-op.
+  const mobileChipsMQ = window.matchMedia('(max-width: 900px)');
+  function closeChipsMenu() {
+    if (chipsWrap) chipsWrap.classList.remove('is-open');
+    if (chipsToggle) chipsToggle.setAttribute('aria-expanded', 'false');
+  }
+  if (chipsToggle && chipsWrap) {
+    chipsToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = chipsWrap.classList.toggle('is-open');
+      chipsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // Close when tapping outside (mobile-only — on desktop is-open is irrelevant).
+    document.addEventListener('click', (e) => {
+      if (!mobileChipsMQ.matches) return;
+      if (!chipsWrap.contains(e.target)) closeChipsMenu();
+    });
+  }
+
   function renderCategoryChips() {
     if (!chipsBox || !tocReady) return;
     // Top-level categories the user typically wants in one click.
@@ -428,6 +452,9 @@ export function initBrowser({ onAddSource, showToast }) {
         title: `${books.length} ספרים`,
         onclick: () => {
           navStack.length = 0;
+          // On mobile, collapse the dropdown after a selection so the
+          // result fills the viewport without scrolling past chips.
+          if (mobileChipsMQ.matches) closeChipsMenu();
           renderCategoryNav(cat, books);
         },
       }));

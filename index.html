@@ -27,6 +27,7 @@
     <link rel="stylesheet" href="css/fonts.css" />
     <link rel="stylesheet" href="css/main.css" />
     <link rel="stylesheet" href="css/rtl.css" />
+    <link rel="stylesheet" href="css/mobile.css" />
     <link rel="stylesheet" href="css/print.css" media="print" />
   </head>
   <body>
@@ -123,7 +124,19 @@
             <button type="submit" class="btn btn--primary btn--small">חפש</button>
           </form>
           <div class="search__suggestions" data-role="suggestions" hidden></div>
-          <div class="category-chips" data-role="category-chips"></div>
+          <div class="chips-wrap" data-role="chips-wrap">
+            <button
+              type="button"
+              class="chips-toggle"
+              data-role="chips-toggle"
+              aria-expanded="false"
+              aria-controls="category-chips"
+            >
+              <span class="chips-toggle__label">קטגוריות</span>
+              <span class="chips-toggle__arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="category-chips" data-role="category-chips" id="category-chips"></div>
+          </div>
         </div>
 
         <div class="browser" data-role="browser">
