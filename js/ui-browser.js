@@ -1094,8 +1094,28 @@ export function initBrowser({ onAddSource, showToast }) {
 
     // Mishnah / Yerushalmi / Mishneh Torah / SA / Tur / Commentary / Targum
     // / unknown: depth-driven (segments for chapter, nav-grid for book).
+    //
+    // Section-depth override: if we've already navigated to chapter+ level
+    // (sections.length >= 1) but the text is still 2-level nested, the user
+    // already made their selection — don't trap them in another picker.
+    // Flatten one level and render inline as a segments list. This fixes
+    // commentaries like ברכת אברהם where Sefaria returns the chapter's
+    // halakhot wrapped in an outer array, causing textDepth=2 to misroute
+    // to the multi-section grid.
     if (textD === 0) {
       resultBox.appendChild(renderLeaf(result));
+    } else if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
+      let flatHebrew;
+      if (result.hebrew.length === 1 && Array.isArray(result.hebrew[0])) {
+        // Single-chapter response nested in an outer array — unwrap.
+        flatHebrew = result.hebrew[0];
+      } else {
+        // Each top-level item is a multi-line halakhah — join inner lines.
+        flatHebrew = result.hebrew.map((s) =>
+          Array.isArray(s) ? flattenSefariaText(s) : (s ?? '')
+        );
+      }
+      resultBox.appendChild(renderSection({ ...result, hebrew: flatHebrew }, kind));
     } else if (textD === 1) {
       resultBox.appendChild(renderSection(result, kind));
     } else {
