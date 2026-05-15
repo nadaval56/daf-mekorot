@@ -63,13 +63,20 @@
   .app-header__actions {
     gap: 0.3rem;
     flex: 1 1 auto;
+    flex-wrap: nowrap; /* 4 כפתורים יוצאים בשורה אחת */
     justify-content: flex-end;
   }
 
+  /* כפתורי ה-header במובייל: רק אימוג'י, ללא טקסט. הטקסט נשמר ב-aria-label. */
   .app-header__actions .btn {
-    padding: 0.4rem 0.55rem;
-    font-size: 0.85rem;
+    padding: 0.45rem 0.55rem;
+    font-size: 1.05rem;     /* מגדיל את האימוג'י */
+    line-height: 1;
+    min-width: 2.2rem;
+    justify-content: center;
   }
+  .app-header__actions .btn__text { display: none; }
+  .app-header__actions .btn__icon { font-size: 1rem; }
 
   /* ====== App main — ספריא למעלה, דף למטה ====== */
 
@@ -136,10 +143,17 @@
   }
 
   .chips-toggle:hover,
-  .chips-toggle:focus-visible {
+  .chips-toggle:focus-visible,
+  .chips-toggle:active {
     background: var(--color-bg-soft);
     border-color: var(--color-accent);
     outline: none;
+  }
+
+  /* פתוח — רקע מודגש כדי לסמן מצב פעיל */
+  .chips-wrap.is-open .chips-toggle {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
   }
 
   .chips-toggle__arrow {
