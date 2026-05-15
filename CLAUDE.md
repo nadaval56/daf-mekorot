@@ -98,14 +98,20 @@
 
 `_prevCrumb` שומר את שרשרת ה-back של הרמות מעל. `reloadStackEntry` מעביר אותה חזרה ל-`renderTreeNode`. ככה הכפתור "→ חזרה" ממשיך להופיע עד שמגיעים לראש העץ — ולא נעלם אחרי לחיצה אחת.
 
-### 4.4 ספרים בעלי SchemaNode מורכב (Zohar, Sifra, Mishneh Torah)
+### 4.4 ספרים בעלי SchemaNode מורכב (Zohar, Sifra, Mishneh Torah, פרשנויות)
 
-`/api/v3/texts/<title>` לטרקטטים פשוטים מחזיר טקסט. ל-SchemaNodes זה עשוי לזרוק 500 או להחזיר מבנה לא תקין. ב-`loadRef` יש fallback:
-1. `SefariaError.code` ∈ {`server`, `not_found`, `parse`} → ננסה `fetchIndexFor(title)`.
-2. אם `idx.isComplex && idx.nodes.length` → `renderComplexBookIndex(bookRef, idx)` שמציג את ה-`nodes` כקוביות.
-3. כל קוביה טוענת `<bookRef>, <enTitle>`.
+`/api/v3/texts/<title>` לטרקטטים פשוטים מחזיר טקסט. ל-SchemaNodes זה עשוי לזרוק 500 או להחזיר מבנה לא תקין. ב-`loadRef` יש fallback בשתי שכבות:
 
-**אזהרת לולאה (תוקנה — אבל קל לחזור עליה):** sub-node שגם הוא complex (Sifra → Tzav → Shemini) — אם נטעין ref מורכב `Sifra, Tzav` דרך loadRef, ספריא תזרוק 500 שוב, נקרא ל-`fetchIndexFor('Sifra, Tzav')` שמתעלם מהזנב ומחזיר את ה-index של Sifra → נראה את אותן הקוביות שוב → ref מורכב יותר → 400. הקוד ב-`renderComplexBookIndex` בודק האם ל-`node.nodes` יש תוכן — אם כן, recurse ב-`renderComplexBookIndex` עם ה-sub-node ישירות במקום round-trip דרך `loadRef`.
+1. `SefariaError.code` ∈ {`server`, `not_found`, `parse`} → ננסה `fetchIndexFor(refOrName)`.
+2. אם `idx.isComplex && idx.nodes.length` → `drillIntoIndex(idx, refOrName)` מטייל **בתוך ה-schema** לפי הפלגי ה-comma של ה-ref.
+3. אם ה-node שהגענו אליו יש לו sub-nodes → `renderComplexBookIndex(drilled.ref, drilled.node)` מציג קוביות עם ה-ref **הנכון** של הרמה הזאת.
+4. אם הגענו ל-leaf (כמו "פרק א" שלא נטען) → **walk-up אוטומטי** ל-parent + toast "לא הצלחנו לטעון X — מציג את הרמה הקודמת".
+
+**למה drillIntoIndex נחוץ:** Sefaria's `/api/v2/index/X, Y, Z` **מתעלם מ-",Y,Z"** ומחזיר את ה-index של `X` בלבד. בלי drillIntoIndex היינו מציגים את ה-cubes של `X` כאילו הן של `X,Y,Z` → לחיצה תיצור ref מורכב יותר → 400 → לולאה.
+
+**ב-`renderComplexBookIndex`:** ה-onclick של כל קובייה **תמיד קורא ל-`loadRef`**, ללא חריגים. הגישה הקודמת (`hasSubNodes ? recurse : loadRef`) מנעה ניסיון לטעון טקסט ברמת ביניים — מה שגרם לספרים כמו ברכת אברהם להציג אינסוף קוביות. עם drillIntoIndex + walk-up מהשלב הקודם, אין לולאה גם בלי ה-recursion הישיר. עלות: HTTP roundtrip מיותר על לחיצת קובייה (~50ms) — שווה.
+
+**אזהרת לולאה ההיסטורית** (Sifra → Tzav → Shemini, 400 על "Sifra, Tzav, Shemini"): נפתרה ע"י drillIntoIndex. אם אתה משחזר התנהגות שונה ב-`renderComplexBookIndex` — ודא שאתה לא משחזר גם את הלולאה.
 
 ### 4.5 תלמוד בבלי — Daf 1 ב-Placeholder
 
@@ -116,6 +122,42 @@
 ב-`detectKind(result)` משתמשים ב-`result.categories` (אנגלית), לא ב-`heCategories`. הסיבה: heRef ועברית משתנים בין תגובות (גרשיים שונים, range refs מרגיזים), בעוד שהאנגלית של ספריא יציבה.
 
 נווט בעומק: `result.sections.length` (גם של ספריא) במקום parse של heRef. `sections.length === 0` = ספר שלם, `=== 1` = פרק/דף, `=== 2` = פסוק/עמוד/משנה.
+
+### 4.7 פרשנויות דלילות (sparse) — הצגה inline בעומק פרק+
+
+הרבה ספרי פרשנות אינם כותבים על כל פסוק/הלכה/משנה. **ברכת אברהם על משנה תורה** הוא דוגמה: בפרק א של הלכות קריאת שמע יש לו הערה רק על הלכה ט.
+
+**איך זה נראה ב-API**: בקשה ל-ref ברמת פרק (למשל `Birkat Avraham on Mishneh Torah, Reading the Shema 1`) מצליחה ומחזירה `hebrew = [[empty, empty, …, "טקסט של הלכה ט"]]` (`textDepth=2`, רוב האיברים ריקים). בקשה ל-ref ברמת הלכה ריקה (`...Reading the Shema 1 1`) מחזירה **404**.
+
+**ההיגיון של ה-UX**: כשהמשתמש כבר ירד לעומק פרק, אסור לבקש ממנו לבחור הלכה ספציפית — כי רובן לא קיימות, וגם אם כן, הוא בא לראות את הפרק, לא לבחור שוב.
+
+**הפתרון ב-`renderResult`** (מסלול ברירת המחדל, לא tanakh/bavli):
+```js
+if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
+  // unwrap one level — render inline as segments, not as a sub-cube picker
+  let flatHebrew;
+  if (result.hebrew.length === 1 && Array.isArray(result.hebrew[0])) {
+    flatHebrew = result.hebrew[0];           // single-chapter outer wrap
+  } else {
+    flatHebrew = result.hebrew.map(s =>
+      Array.isArray(s) ? flattenSefariaText(s) : (s ?? '')
+    );
+  }
+  renderSection({ ...result, hebrew: flatHebrew }, kind);
+}
+```
+
+**בונוס חינם**: `renderSection` כבר מסנן segments ריקים (`if (!segText) return;`), אז בפועל המשתמש רואה רק את הלכה ט (במקרה של ברכת אברהם) — בלי 8 שורות ריקות.
+
+**מה זה לא מתקן**: ספרים שספריא בכלל לא מגישה ברמת הפרק (אז ה-loadRef נכשל מההתחלה — נופלים למסלול ה-error UI מסעיף 4.8).
+
+### 4.8 שגיאות טעינה — מסלולי מילוט
+
+כש-`loadRef` נכשל **גם אחרי** ה-drill + walk-up מסעיף 4.4, המשתמש מקבל error block עם שלושה כפתורי פעולה:
+
+- **→ חזרה** — חוזר ל-`drillFrom` או ל-`navStack[top]`. תיקון באג מימי קדם: `drillFrom` נדחף ל-`navStack` רק **אחרי** fetch מוצלח, אז ב-catch אנחנו משתמשים ב-`drillFrom` ישירות כ-fallback אם ה-stack ריק.
+- **↻ נסה שוב** — `loadRef(refOrName)` חוזר על עצמו (שגיאות חולפות).
+- **🌐 פתח בספריא** — קישור לאתר ספריא, `https://www.sefaria.org/${encodeURIComponent(ref.replace(/\s+/g, '_'))}?lang=he`. נשמר כקופסת מילוט סופית.
 
 ---
 
@@ -241,6 +283,7 @@
 - **Phase 4 (Library)** ✅ — שמירת דפים, שכפול, מחיקה.
 - **Phase 5 (Design)** ✅ — פונט, גודל, מספור, גלישה טבעית, מספרי עמודים, ביטול צבעוני/ש"ל.
 - **Phase 6 (Polish)** ✅ — Hashem kinnui (כולל ניקוד-מודע), פורמט מראה מקום per-category, drag-and-drop, favicon, meta, no-cache, complex-schema fallback (כולל הגנת לולאה), back-button chain.
+- **Phase 7 (Mobile + sparse-commentary fix)** ✅ — `css/mobile.css` (`@media (max-width: 900px)`): ספריא למעלה / דף למטה, דף ללא גלילה פנימית, dropdown קטגוריות אנכי, כפתורי header icon-only. בנפרד: `drillIntoIndex` + walk-up ב-`loadRef`, תמיד-loadRef ב-`renderComplexBookIndex`, inline-at-chapter+ ב-`renderResult`, error UX (חזרה / נסה שוב / פתח בספריא). ראה סעיפים 4.4 ו-4.7.
 
 לא הוטמע: סימניות (bookmarks), ייצוא/ייבוא JSON של דפים (יש helper אבל לא מחווט ל-UI).
 
