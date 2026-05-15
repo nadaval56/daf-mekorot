@@ -83,12 +83,39 @@ document.addEventListener('click', (e) => {
 
 // Build the mailto: target only on click — keeps the address out of static
 // HTML so naive email scrapers crawling GitHub Pages don't pick it up.
+// Uses programmatic <a>.click() instead of `location.href = mailto:` —
+// some mobile browsers silently ignore the location-assign path while
+// they reliably invoke the OS mail-handler from a clicked anchor.
+// If the page never loses focus afterwards (no mail app installed), we
+// show the address in a toast so the user can copy it manually.
 function openFeedbackMail() {
   const user = 'nadaval56';
   const domain = 'gmail.com';
+  const email = `${user}@${domain}`;
   const subject = encodeURIComponent('משוב על דף מקורות');
   const body = encodeURIComponent("שלום נדב, השתמשתי באתר שלך 'דף מקורות' ורציתי לומר ש");
-  window.location.href = `mailto:${user}@${domain}?subject=${subject}&body=${body}`;
+
+  let pageHidden = false;
+  const onVisChange = () => { if (document.hidden) pageHidden = true; };
+  document.addEventListener('visibilitychange', onVisChange);
+
+  const a = document.createElement('a');
+  a.href = `mailto:${email}?subject=${subject}&body=${body}`;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 200);
+
+  // If the mail app never opened (page stayed visible), surface the
+  // address so the user can copy it. 1500ms is enough for the OS handler
+  // to dispatch; longer would frustrate, shorter risks false positives.
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', onVisChange);
+    if (!pageHidden) {
+      navigator.clipboard?.writeText(email).catch(() => {});
+      showToast(`לא נפתחה אפליקציית מייל. הכתובת ${email} הועתקה.`, 'info');
+    }
+  }, 1500);
 }
 
 function handleNewSheet() {
