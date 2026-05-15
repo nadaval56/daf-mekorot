@@ -409,6 +409,9 @@ export function initBrowser({ onAddSource, showToast }) {
   const chipsBox = $('[data-role="category-chips"]');
   const chipsWrap = $('[data-role="chips-wrap"]');
   const chipsToggle = $('[data-role="chips-toggle"]');
+  // Parent panel — when chips dropdown opens we release the panel's
+  // mobile max-height so the full list is visible (page-level scroll).
+  const browserPanel = chipsWrap?.closest('.panel');
 
   // Mobile-only: the chips row is hidden behind a "קטגוריות ▾" toggle to
   // save vertical space (see css/mobile.css). On desktop the toggle is
@@ -416,12 +419,14 @@ export function initBrowser({ onAddSource, showToast }) {
   const mobileChipsMQ = window.matchMedia('(max-width: 900px)');
   function closeChipsMenu() {
     if (chipsWrap) chipsWrap.classList.remove('is-open');
+    if (browserPanel) browserPanel.classList.remove('panel--chips-open');
     if (chipsToggle) chipsToggle.setAttribute('aria-expanded', 'false');
   }
   if (chipsToggle && chipsWrap) {
     chipsToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       const open = chipsWrap.classList.toggle('is-open');
+      if (browserPanel) browserPanel.classList.toggle('panel--chips-open', open);
       chipsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
     // Close when tapping outside (mobile-only — on desktop is-open is irrelevant).
@@ -835,12 +840,52 @@ export function initBrowser({ onAddSource, showToast }) {
       emptyBox.hidden = true;
       resultBox.hidden = false;
       resultBox.innerHTML = '';
+
+      // Action buttons: back (if we came from somewhere), retry, open in
+      // Sefaria. Helps users recover from transient errors and from
+      // complex-schema books we can't render inline.
+      const actions = el('div', { class: 'browser__error-actions' });
+      // Back target: if navStack is populated we go to its top; otherwise
+      // fall back to the drillFrom that brought us here (e.g. user picked
+      // a book from a category, fetch failed before navStack got pushed).
+      const backTarget = navStack.length > 0
+        ? navStack[navStack.length - 1]
+        : drillFrom;
+      if (backTarget) {
+        actions.appendChild(el('button', {
+          type: 'button',
+          class: 'btn btn--ghost btn--small',
+          text: '→ חזרה',
+          onclick: () => {
+            if (navStack.length > 0) navStack.pop();
+            reloadStackEntry(backTarget);
+          },
+        }));
+      }
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn--ghost btn--small',
+        text: '↻ נסה שוב',
+        onclick: () => loadRef(refOrName),
+      }));
+      // Sefaria's web app accepts both English refs ("Genesis.1.1") and
+      // Hebrew ones (e.g. "בראשית א"); spaces become underscores.
+      const sefariaUrl = `https://www.sefaria.org/${encodeURIComponent(String(refOrName).replace(/\s+/g, '_'))}?lang=he`;
+      actions.appendChild(el('a', {
+        class: 'btn btn--ghost btn--small',
+        href: sefariaUrl,
+        target: '_blank',
+        rel: 'noopener',
+        text: '🌐 פתח בספריא',
+      }));
+
       resultBox.appendChild(el('div', { class: 'browser__error' }, [
         el('div', { class: 'browser__error-title', text: 'לא הצלחנו לטעון את המקור' }),
         el('div', { class: 'browser__error-ref mixed-content', text: String(refOrName) }),
         el('div', { class: 'browser__error-msg', text: msg }),
         el('div', { class: 'browser__error-hint',
-          text: 'יתכן שספר זה דורש בחירת פרק / סעיף ספציפי. נסה חיפוש מפורט יותר.' }),
+          text: 'אפשר לחזור אחורה, לנסות שוב, או לפתוח את המקור ישירות באתר ספריא.' }),
+        actions,
       ]));
     } finally {
       setLoading(false);

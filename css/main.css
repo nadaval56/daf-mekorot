@@ -654,6 +654,13 @@ body {
 .browser__error-ref { font-family: var(--font-frank); }
 .browser__error-msg { font-size: 0.9rem; color: var(--color-text-soft); }
 .browser__error-hint { font-size: 0.85rem; color: var(--color-muted); }
+.browser__error-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+.browser__error-actions .btn { text-decoration: none; }
 .nav-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
