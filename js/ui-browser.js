@@ -409,6 +409,9 @@ export function initBrowser({ onAddSource, showToast }) {
   const chipsBox = $('[data-role="category-chips"]');
   const chipsWrap = $('[data-role="chips-wrap"]');
   const chipsToggle = $('[data-role="chips-toggle"]');
+  // Parent panel — when chips dropdown opens we release the panel's
+  // mobile max-height so the full list is visible (page-level scroll).
+  const browserPanel = chipsWrap?.closest('.panel');
 
   // Mobile-only: the chips row is hidden behind a "קטגוריות ▾" toggle to
   // save vertical space (see css/mobile.css). On desktop the toggle is
@@ -416,12 +419,14 @@ export function initBrowser({ onAddSource, showToast }) {
   const mobileChipsMQ = window.matchMedia('(max-width: 900px)');
   function closeChipsMenu() {
     if (chipsWrap) chipsWrap.classList.remove('is-open');
+    if (browserPanel) browserPanel.classList.remove('panel--chips-open');
     if (chipsToggle) chipsToggle.setAttribute('aria-expanded', 'false');
   }
   if (chipsToggle && chipsWrap) {
     chipsToggle.addEventListener('click', (e) => {
       e.stopPropagation();
       const open = chipsWrap.classList.toggle('is-open');
+      if (browserPanel) browserPanel.classList.toggle('panel--chips-open', open);
       chipsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
     // Close when tapping outside (mobile-only — on desktop is-open is irrelevant).
@@ -814,15 +819,50 @@ export function initBrowser({ onAddSource, showToast }) {
       // isn't one canonical text — there are nested sub-books. In those
       // cases, fall back to /api/v2/index/<title>, read schema.nodes,
       // and let the user pick a sub-section.
+      //
+      // CLAUDE.md sec 4.4 known issue: /api/v2/index/X,Y,Z silently
+      // ignores ",Y,Z" and returns X's index. The previous code handed
+      // that idx straight to renderComplexBookIndex with bookRef="X,Y,Z",
+      // which made click-actions build malformed refs ("X,Y,Z,A" → 400)
+      // and looked to the user like "click did nothing". The fix below:
+      // detect the truncation and walk INTO the returned schema along the
+      // remaining segments, then render at the deepest valid level.
       if (err instanceof SefariaError && (err.code === 'server' || err.code === 'not_found' || err.code === 'parse')) {
         try {
           const idx = await fetchIndexFor(refOrName, { signal: activeFetch.signal });
           if (idx?.isComplex && Array.isArray(idx.nodes) && idx.nodes.length) {
-            if (reset) navStack.length = 0;
-            else if (drillFrom) navStack.push(drillFrom);
-            currentResult = { ref: refOrName, heRef: idx.heTitle || refOrName, heCategories: [] };
-            renderComplexBookIndex(refOrName, idx);
-            return;
+            const drilled = drillIntoIndex(idx, refOrName);
+            if (drilled) {
+              // Best case: the drilled node has further sub-nodes — render
+              // them as cubes at the user-visible depth they expected.
+              if (drilled.node.nodes?.length) {
+                if (reset) navStack.length = 0;
+                else if (drillFrom) navStack.push(drillFrom);
+                currentResult = {
+                  ref: drilled.ref,
+                  heRef: drilled.node.heTitle || drilled.ref,
+                  heCategories: [],
+                };
+                renderComplexBookIndex(drilled.ref, drilled.node);
+                return;
+              }
+              // Fall-back: we hit a leaf node (e.g. a chapter that Sefaria's
+              // text API 500's on). Walk back UP to its parent so the user
+              // sees siblings (other chapters) instead of a hard error, with
+              // a toast telling them what happened.
+              if (drilled.parent && drilled.parent.nodes?.length) {
+                if (reset) navStack.length = 0;
+                else if (drillFrom) navStack.push(drillFrom);
+                currentResult = {
+                  ref: drilled.parentRef,
+                  heRef: drilled.parent.heTitle || drilled.parentRef,
+                  heCategories: [],
+                };
+                showToast(`לא הצלחנו לטעון "${refOrName}" — מציג את הרמה הקודמת.`, 'info');
+                renderComplexBookIndex(drilled.parentRef, drilled.parent);
+                return;
+              }
+            }
           }
         } catch {
           /* fall through to the inline-error display below */
@@ -835,12 +875,52 @@ export function initBrowser({ onAddSource, showToast }) {
       emptyBox.hidden = true;
       resultBox.hidden = false;
       resultBox.innerHTML = '';
+
+      // Action buttons: back (if we came from somewhere), retry, open in
+      // Sefaria. Helps users recover from transient errors and from
+      // complex-schema books we can't render inline.
+      const actions = el('div', { class: 'browser__error-actions' });
+      // Back target: if navStack is populated we go to its top; otherwise
+      // fall back to the drillFrom that brought us here (e.g. user picked
+      // a book from a category, fetch failed before navStack got pushed).
+      const backTarget = navStack.length > 0
+        ? navStack[navStack.length - 1]
+        : drillFrom;
+      if (backTarget) {
+        actions.appendChild(el('button', {
+          type: 'button',
+          class: 'btn btn--ghost btn--small',
+          text: '→ חזרה',
+          onclick: () => {
+            if (navStack.length > 0) navStack.pop();
+            reloadStackEntry(backTarget);
+          },
+        }));
+      }
+      actions.appendChild(el('button', {
+        type: 'button',
+        class: 'btn btn--ghost btn--small',
+        text: '↻ נסה שוב',
+        onclick: () => loadRef(refOrName),
+      }));
+      // Sefaria's web app accepts both English refs ("Genesis.1.1") and
+      // Hebrew ones (e.g. "בראשית א"); spaces become underscores.
+      const sefariaUrl = `https://www.sefaria.org/${encodeURIComponent(String(refOrName).replace(/\s+/g, '_'))}?lang=he`;
+      actions.appendChild(el('a', {
+        class: 'btn btn--ghost btn--small',
+        href: sefariaUrl,
+        target: '_blank',
+        rel: 'noopener',
+        text: '🌐 פתח בספריא',
+      }));
+
       resultBox.appendChild(el('div', { class: 'browser__error' }, [
         el('div', { class: 'browser__error-title', text: 'לא הצלחנו לטעון את המקור' }),
         el('div', { class: 'browser__error-ref mixed-content', text: String(refOrName) }),
         el('div', { class: 'browser__error-msg', text: msg }),
         el('div', { class: 'browser__error-hint',
-          text: 'יתכן שספר זה דורש בחירת פרק / סעיף ספציפי. נסה חיפוש מפורט יותר.' }),
+          text: 'אפשר לחזור אחורה, לנסות שוב, או לפתוח את המקור ישירות באתר ספריא.' }),
+        actions,
       ]));
     } finally {
       setLoading(false);
@@ -908,6 +988,60 @@ export function initBrowser({ onAddSource, showToast }) {
       if (heT?.text) return heT.text;
     }
     return '';
+  }
+
+  /** Walk down `idx` along the comma-separated segments of `ref`, returning
+   *  the deepest matching node, the canonical ref to that node, AND its
+   *  parent (so callers can walk back up if the deepest is a leaf they
+   *  can't render).
+   *
+   *  Why: Sefaria's `/api/v2/index/X, Y, Z` ignores trailing comma-parts
+   *  and returns X's index. When that happens, we need to descend into the
+   *  schema ourselves to find the Y → Z sub-tree the user actually wanted.
+   *
+   *  Returns `{ node, ref, parent, parentRef }` or `null` if the first
+   *  segment doesn't match `idx.title`.
+   */
+  function drillIntoIndex(idx, ref) {
+    if (!idx || !ref) return null;
+    const segs = String(ref).split(',').map((s) => s.trim()).filter(Boolean);
+    if (!segs.length) return null;
+
+    const idxTitleEn = idx.title || '';
+    const idxTitleHe = idx.heTitle || '';
+    const firstMatches = segs[0] === idxTitleEn
+                      || segs[0] === idxTitleHe
+                      || idxTitleEn.startsWith(segs[0])
+                      || idxTitleHe.startsWith(segs[0]);
+    if (!firstMatches) return null;
+
+    let node = idx;
+    let parent = null;
+    let resolvedSegs = [idxTitleEn || segs[0]];
+    let resolvedParentSegs = null;
+
+    for (let i = 1; i < segs.length; i++) {
+      const children = Array.isArray(node.nodes) ? node.nodes : [];
+      if (!children.length) break;
+      const target = segs[i];
+      const match = children.find((c) =>
+        c.title === target ||
+        nodeHebrewTitle(c) === target ||
+        (c.title && c.title.toLowerCase() === target.toLowerCase())
+      );
+      if (!match) break;
+      parent = node;
+      resolvedParentSegs = resolvedSegs.slice();
+      node = match;
+      resolvedSegs.push(match.title || target);
+    }
+
+    return {
+      node,
+      ref: resolvedSegs.join(', '),
+      parent,
+      parentRef: resolvedParentSegs ? resolvedParentSegs.join(', ') : null,
+    };
   }
 
   function setLoading(on) {

@@ -101,6 +101,14 @@
     min-height: 14rem;
   }
 
+  /* כשתפריט הקטגוריות פתוח — משחררים את ההגבלה ואת ה-overflow:hidden
+     כדי שהרשימה המלאה (14 קטגוריות) תיראה. הדף עצמו גולל אם צריך.
+     ראה js/ui-browser.js — המחלקה מתווספת/מוסרת בלחיצה על ה-toggle. */
+  .panel--browser.panel--chips-open {
+    max-height: none;
+    overflow: visible;
+  }
+
   .panel--browser .panel__head {
     padding: 0.6rem 0.7rem 0.5rem;
     gap: 0.45rem;
