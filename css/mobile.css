@@ -1,0 +1,306 @@
+/* ============================================================
+   css/mobile.css — התאמות למובייל בלבד (max-width: 900px).
+   העיצוב לדסקטופ ב-main.css נשאר ללא שינוי.
+
+   מבנה במובייל:
+     ┌───────────────────────────┐
+     │ Header (compact)          │
+     ├───────────────────────────┤
+     │ Sefaria Browser (top)     │  ← max-height עם גלילה פנימית
+     │  • חיפוש                  │
+     │  • כפתור "קטגוריות ▾"     │  ← תפריט נגלל
+     │  • תוצאות                 │
+     ├───────────────────────────┤
+     │ Sheet (bottom)            │  ← ללא גלילה פנימית, מוצג במלואו
+     │  • כותרת + בס"ד / תאריך   │     הדף עצמו (window) גולל
+     │  • מקורות (גובה טבעי)     │
+     └───────────────────────────┘
+
+   .chips-toggle קיים גם בדסקטופ אבל מוסתר — רק במובייל הוא חושף תפקיד.
+   ראה js/ui-browser.js לטיפול בלוגיקת ה-toggle.
+   ============================================================ */
+
+/* ----- כפתור נגלל לקטגוריות — תמיד מוסתר בדסקטופ ----- */
+.chips-toggle { display: none; }
+
+/* בדסקטופ ה-wrap הוא רק <div> רגיל שעוטף את ה-chips — בלי השפעה ויזואלית. */
+
+@media (max-width: 900px) {
+
+  /* ====== Body / Layout root ====== */
+
+  html, body {
+    /* בדסקטופ height: 100% כדי שה-app-main יתפוס גובה מלא + פאנלים גוללים פנימית.
+       במובייל אנחנו רוצים שהדף עצמו יגלל כדי שהדף-מקורות יופיע במלואו. */
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    /* iOS Safari: 100vh כולל את שורת הכתובת והופך את הדף ל"גבוה מדי".
+       100dvh (dynamic viewport) מתחשב בזה. fallback ל-100vh בדפדפנים ישנים. */
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* ====== App header — קומפקטי ====== */
+
+  .app-header {
+    padding: 0.5rem 0.7rem;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .app-header__brand h1 {
+    font-size: 1.05rem;
+  }
+
+  .app-header__tagline {
+    display: none; /* tagline לא חיוני במובייל */
+  }
+
+  .app-header__actions {
+    gap: 0.3rem;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+
+  .app-header__actions .btn {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.85rem;
+  }
+
+  /* ====== App main — ספריא למעלה, דף למטה ====== */
+
+  .app-main {
+    /* main.css מגדיר grid עם grid-template-columns: 1fr ב-<900px.
+       מבטלים flex-grow כדי שכל פאנל יקבל גובה טבעי וה-window יגלל. */
+    flex: 0 0 auto;
+    padding: 0.6rem;
+    gap: 0.6rem;
+  }
+
+  /* היפוך סדר ב-grid:  ה-HTML מכיל את הדף ראשון (פאנל ימני בדסקטופ)
+     ואז את הדפדפן. כאן הדפדפן עולה לראש. */
+  .panel--browser { order: -1; }
+  .panel--sheet   { order:  1; }
+
+  /* ====== פאנל דפדפן ספריא — גובה מוגבל עם גלילה פנימית ====== */
+
+  .panel--browser {
+    /* גובה גמיש: לא חוטף את כל המסך, אבל מספיק כדי להציג תוצאות. */
+    max-height: 70vh;
+    min-height: 14rem;
+  }
+
+  .panel--browser .panel__head {
+    padding: 0.6rem 0.7rem 0.5rem;
+    gap: 0.45rem;
+  }
+
+  .panel--browser .panel__head h2 {
+    display: none; /* "ספריא" — הקונטקסט ברור משדה החיפוש */
+  }
+
+  .search__input {
+    padding: 0.6rem 0.8rem;
+    font-size: 16px; /* >=16px כדי שאייפון לא יזום zoom-on-focus */
+  }
+
+  .browser { padding: 0.7rem; }
+  .browser__empty, .browser__loading { padding: 1.2rem 0.7rem; }
+
+  /* ====== Chips dropdown — תפריט נגלל ====== */
+
+  .chips-wrap {
+    position: relative;
+  }
+
+  .chips-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    color: var(--color-accent-strong);
+    border-radius: var(--radius);
+    padding: 0.5rem 0.75rem;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    gap: 0.5rem;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .chips-toggle:hover,
+  .chips-toggle:focus-visible {
+    background: var(--color-bg-soft);
+    border-color: var(--color-accent);
+    outline: none;
+  }
+
+  .chips-toggle__arrow {
+    color: var(--color-muted);
+    font-size: 0.85em;
+    transition: transform 0.18s ease;
+  }
+
+  .chips-wrap.is-open .chips-toggle__arrow {
+    transform: rotate(180deg);
+  }
+
+  /* ה-chips עצמם — מוסתרים כברירת מחדל, חושפים עם is-open. */
+  .chips-wrap .category-chips {
+    display: none;
+    margin-top: 0.4rem;
+    padding: 0.55rem;
+    background: var(--color-bg-soft);
+    border: 1px solid var(--color-border-soft);
+    border-radius: var(--radius);
+    gap: 0.35rem;
+  }
+
+  .chips-wrap.is-open .category-chips {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .category-chip {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.88rem;
+  }
+
+  /* ====== פאנל דף המקורות — ללא גלילה פנימית, גובה טבעי ====== */
+
+  .panel--sheet {
+    /* main.css קובע overflow:hidden כדי לחתוך לפינות מעוגלות. נשאיר כך:
+       הפאנל גדל טבעית לפי תוכנו (flex 0 0 auto ב-app-main), אז אין מה לחתוך. */
+    min-height: 0;
+  }
+
+  .panel--sheet .panel__head {
+    padding: 0.65rem 0.7rem 0.55rem;
+    gap: 0.45rem;
+  }
+
+  .sheet {
+    /* main.css קובע flex:1 + overflow:auto — כאן הופכים: גובה טבעי וללא גלילה,
+       כך שכל המקורות מוצגים והגלילה היא של החלון. */
+    flex: 0 0 auto;
+    overflow: visible;
+    height: auto;
+    padding: 0.7rem;
+  }
+
+  /* כל inputs >= 16px במובייל כדי שאייפון לא יזום zoom-on-focus. */
+  .sheet-title { font-size: 16px; padding: 0.3rem 0.35rem; }
+  .sheet-header-chip { font-size: 16px; }
+  .sheet-header-chip__button { font-size: 16px; }
+
+  .panel__head-actions { gap: 0.3rem; }
+  .panel__head-actions .btn { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+
+  /* ====== כרטיסי מקור — תאי מגע נוחים ====== */
+
+  .source-card { padding: 0.75rem 0.8rem; }
+
+  .source-card__head {
+    gap: 0.45rem;
+    align-items: center;
+  }
+
+  .source-card__title { font-size: 0.98rem; }
+
+  .source-card__actions .icon-btn {
+    /* יעד נגיעה — לפחות 32×32 */
+    min-width: 2rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.4rem;
+    font-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .source-card__drag {
+    /* גרירת HTML5 native לא עובדת על מגע — מקטינים נוכחות חזותית בלי להסיר. */
+    font-size: 0.95rem;
+    opacity: 0.5;
+  }
+
+  .source-card__text {
+    padding: 0.45rem 0.55rem;
+    /* גודל גופן בכרטיסים נקבע ע"י --sheet-font-size מהגדרות; לא לעקוף כאן. */
+  }
+
+  /* ====== תוצאות חיפוש — קומפקט יותר ====== */
+
+  .result-card__head {
+    /* בדסקטופ 3-עמודות grid — במובייל flex עם wrap, כותרת באמצע למעלה. */
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding: 0.5rem 0.7rem;
+  }
+  .result-card__head-center {
+    flex: 1 1 100%;
+    order: -1;
+    text-align: center;
+  }
+  .result-card__nav-slot { flex: 1 1 auto; }
+
+  .result-card__body {
+    padding: 0.7rem;
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+
+  .result-card__actions {
+    padding: 0.45rem 0.7rem;
+    gap: 0.3rem;
+  }
+  .result-card__actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .nav-grid {
+    /* קוביות ניווט יותר נדיבות לאצבע */
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 0.35rem;
+    padding: 0.6rem;
+  }
+  .nav-grid__item {
+    padding: 0.7rem 0.4rem;
+    font-size: 0.95rem;
+  }
+
+  .crumbs { padding: 0.35rem 0.5rem; }
+  .crumbs__back { padding: 0.3rem 0.6rem; }
+
+  /* ====== Modal — רוחב כמעט מלא במובייל ====== */
+
+  .modal { max-width: 96vw; width: 96vw; }
+  .modal__body { padding: 1rem 1.1rem 0.9rem; }
+
+  /* ====== Footer קרדיט ====== */
+
+  .sheet__footer { padding: 0.45rem 0.7rem; font-size: 0.75rem; }
+}
+
+/* ============================================================
+   מסכים צרים מאוד (≤ 420px) — שיפור נוסף עבור iPhone SE / Galaxy Mini.
+   ============================================================ */
+@media (max-width: 420px) {
+  .app-header__brand h1 { font-size: 0.95rem; }
+  .app-header__actions .btn {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+  }
+  .sheet-title { font-size: 1rem; }
+  .source-card { padding: 0.65rem 0.7rem; }
+  .source-card__text { font-size: calc(var(--sheet-font-size, 14pt) * 0.95); }
+}
