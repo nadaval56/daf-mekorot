@@ -928,8 +928,11 @@ export function initBrowser({ onAddSource, showToast }) {
   }
 
   /** Show the schema-node sub-sections of a complex book (e.g. Zohar's
-   *  three parts, Mishneh Torah's books). Each click drills into the
-   *  sub-section via a `<book>, <node>` ref. */
+   *  three parts, Mishneh Torah's books). Each click attempts to load the
+   *  sub-ref as text. If Sefaria can serve it (chapter content, a sub-book
+   *  rendered inline, …), the user gets actual content. If not, loadRef's
+   *  fallback (drillIntoIndex + walk-up) renders the next level of cubes
+   *  or backs up — so we never leave the user stuck on a dead leaf. */
   function renderComplexBookIndex(bookRef, idx) {
     emptyBox.hidden = true;
     resultBox.hidden = false;
@@ -950,28 +953,14 @@ export function initBrowser({ onAddSource, showToast }) {
       const enTitle = node.title || '';
       if (!enTitle) continue;
       const subRef = `${bookRef}, ${enTitle}`;
-      // If the sub-node is ITSELF a SchemaNode (carries its own `nodes`),
-      // recurse into renderComplexBookIndex with the sub-node directly.
-      // Going through loadRef instead leads to an infinite loop on books
-      // like Sifra — Sefaria's `/api/v2/index/<parent>, <child>` ignores
-      // the trailing part and returns the parent index again, so we'd
-      // re-render the same cubes and eventually build a malformed ref
-      // (e.g. "Sifra, Tzav, Shemini") that 400s.
-      const hasSubNodes = Array.isArray(node.nodes) && node.nodes.length > 0;
       grid.appendChild(el('button', {
         type: 'button',
         class: 'nav-grid__item mixed-content',
         text: heTitle,
         title: subRef,
-        onclick: hasSubNodes
-          ? () => renderComplexBookIndex(subRef, {
-              heTitle, title: subRef,
-              nodes: node.nodes,
-              categories: idx.categories,
-            })
-          : () => loadRef(subRef, {
-              drillFrom: { ref: bookRef, heRef: idx.heTitle || bookRef },
-            }),
+        onclick: () => loadRef(subRef, {
+          drillFrom: { ref: bookRef, heRef: idx.heTitle || bookRef },
+        }),
       }));
     }
     resultBox.appendChild(el('div', { class: 'result-card' }, [head, hint, grid]));
