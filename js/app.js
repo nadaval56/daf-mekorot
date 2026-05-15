@@ -77,8 +77,19 @@ document.addEventListener('click', (e) => {
     case 'open-settings':   openSettings(); break;
     case 'close-settings':  closeSettings(); break;
     case 'export-print':    printSheet(); break;
+    case 'feedback':        openFeedbackMail(); break;
   }
 });
+
+// Build the mailto: target only on click — keeps the address out of static
+// HTML so naive email scrapers crawling GitHub Pages don't pick it up.
+function openFeedbackMail() {
+  const user = 'nadaval56';
+  const domain = 'gmail.com';
+  const subject = encodeURIComponent('משוב על דף מקורות');
+  const body = encodeURIComponent("שלום נדב, השתמשתי באתר שלך 'דף מקורות' ורציתי לומר ש");
+  window.location.href = `mailto:${user}@${domain}?subject=${subject}&body=${body}`;
+}
 
 function handleNewSheet() {
   const hasContent = sheet.snapshot().sources.length > 0 || sheet.snapshot().title;
