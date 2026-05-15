@@ -166,25 +166,44 @@
     transform: rotate(180deg);
   }
 
-  /* ה-chips עצמם — מוסתרים כברירת מחדל, חושפים עם is-open. */
+  /* ה-chips הופכים במובייל לתפריט נפתח אנכי — שורה לכל קטגוריה,
+     במקום קוביות-pill שמתפרסות. נראה כמו select dropdown סטנדרטי. */
   .chips-wrap .category-chips {
     display: none;
     margin-top: 0.4rem;
-    padding: 0.55rem;
-    background: var(--color-bg-soft);
-    border: 1px solid var(--color-border-soft);
+    padding: 0;
+    background: #fff;
+    border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    gap: 0.35rem;
+    box-shadow: var(--shadow-pop);
+    overflow: hidden;        /* כדי שהפינות העגולות יחתכו את ה-children */
+    gap: 0;
   }
 
   .chips-wrap.is-open .category-chips {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
   }
 
-  .category-chip {
-    padding: 0.4rem 0.85rem;
-    font-size: 0.88rem;
+  /* כל chip — שורה ברוחב מלא, יישור לימין, גבול תחתון בלבד */
+  .chips-wrap .category-chip {
+    width: 100%;
+    text-align: right;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--color-border-soft);
+    border-radius: 0;
+    padding: 0.8rem 0.95rem;
+    font-size: 0.98rem;
+    font-weight: 500;
+    color: var(--color-text);
+    cursor: pointer;
+  }
+  .chips-wrap .category-chip:last-child { border-bottom: 0; }
+  .chips-wrap .category-chip:hover,
+  .chips-wrap .category-chip:active {
+    background: var(--color-bg-soft);
+    border-color: var(--color-border-soft);
   }
 
   /* ====== פאנל דף המקורות — ללא גלילה פנימית, גובה טבעי ====== */
