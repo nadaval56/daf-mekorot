@@ -511,19 +511,22 @@ export function applyHashemKinnui(text) {
   t = t.replace(new RegExp(`(אֲ${N})(ד${N}נ${N}י)(?!${N}[א-ת])`, 'g'),  '$1-$2');
   t = t.replace(/(?<![א-ת])אדני(?![א-ת])/g,                              'א-דני');
   t = t.replace(new RegExp(`(צ${N}ב${N}א${N})(ו${N}ת)`, 'g'),                   '$1-$2');
-  // אל — disambiguate divine "אֵל" (with tsere) from the preposition
-  // "אֶל" (with segol = "to / towards"). With nikud the difference is
-  // unambiguous; without nikud the user accepts a transform.
+  // אל — match the divine name "אֵל" ONLY in its pointed form, with a
+  // tsere on the alef. The preposition "אֶל" (segol = "to / towards") is
+  // left untouched. We also intentionally do NOT touch *unpointed* "אל":
+  // a bare "אל" with no nikud is overwhelmingly the preposition (e.g.
+  // "פנים אל פנים"), so transforming it produced far more false positives
+  // than real divine-name hits.
+  //
+  // A single optional prefix letter (ב/ה/ו/כ/ל/מ/ש) is allowed — e.g.
+  // "לָאֵל", "וְאֵל". We deliberately allow only ONE prefix, not a stack:
+  // many ordinary words and names open with prefix-eligible letters and
+  // then end in "אֵל" — "שְׁמוּאֵל" (Samuel), "שׁוֹאֵל" (asking),
+  // "לְמוּאֵל" (Lemuel). Multi-prefix matching would chew "שמו" / "שו" /
+  // "למו" off as fake prefixes and dash the word mid-stream.
   const PREFIX = '[בהוכלמש]';
-  // (a) Pointed divine: tsere required immediately after the alef.
   t = t.replace(
-    new RegExp(`(?<![א-ת]${N})((?:${PREFIX}${N}){0,3})(אֵ${N})(ל)(?!${N}[א-ת])`, 'g'),
-    '$1$2-$3'
-  );
-  // (b) Unpointed bare/prefixed "אל" — no nikud on the alef or lamed.
-  //     Hebrew-letter lookbehind/ahead still keeps ישראל / אלעזר safe.
-  t = t.replace(
-    new RegExp(`(?<![א-ת])((?:${PREFIX}){0,3})(א)(ל)(?![א-ת])`, 'g'),
+    new RegExp(`(?<![א-ת]${N})((?:${PREFIX}${N})?)(אֵ${N})(ל)(?!${N}[א-ת])`, 'g'),
     '$1$2-$3'
   );
 

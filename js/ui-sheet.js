@@ -11,6 +11,10 @@ export function initSheetUI({ sheet, showToast }) {
   const headerLeftInput  = $('[data-role="sheet-header-left"]');
   const metaSpan = $('[data-role="sheet-meta"]');
   const sheetEl = $('[data-role="sheet"]');
+  // The sheet panel is the common ancestor of the header row (title +
+  // chips) and the source list, so the font setting is applied there as
+  // data-font and inherits down via the --sheet-font custom property.
+  const sheetPanel = sheetEl.closest('.panel--sheet') || sheetEl;
   const listEl = $('[data-role="source-list"]');
   const emptyEl = $('[data-role="sheet-empty"]');
 
@@ -91,7 +95,7 @@ export function initSheetUI({ sheet, showToast }) {
 
     // Apply settings as data attributes for CSS hooks.
     const s = snapshot.settings || {};
-    sheetEl.dataset.font = s.font || 'Frank Ruhl Libre';
+    sheetPanel.dataset.font = s.font || 'Frank Ruhl Libre';
     sheetEl.dataset.fontSize = String(s.fontSize || 14);
     sheetEl.dataset.showNumbering = String(s.showNumbering !== false);
     sheetEl.dataset.showDividers = String(s.showDividers !== false);

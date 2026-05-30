@@ -8,11 +8,14 @@
   --font-ui: 'Heebo', 'Arial Hebrew', 'Arial', sans-serif;
 }
 
-.sheet[data-font='Frank Ruhl Libre'] .source-card__text,
-.sheet[data-font='Frank Ruhl Libre'] .source-card__title { font-family: var(--font-frank); }
-.sheet[data-font='David Libre'] .source-card__text,
-.sheet[data-font='David Libre'] .source-card__title { font-family: var(--font-david); }
-.sheet[data-font='Bellefair'] .source-card__text,
-.sheet[data-font='Bellefair'] .source-card__title { font-family: var(--font-bellefair); }
-.sheet[data-font='Heebo'] .source-card__text,
-.sheet[data-font='Heebo'] .source-card__title { font-family: var(--font-heebo); }
+/* The sheet's selected font is exposed as a single custom property on
+   the sheet panel. Because it lives on the panel (the common ancestor of
+   both the header row and the source list), every descendant — the title,
+   the בס"ד / date chips, the source cards and the print header — inherits
+   the same font. The actual font-family is applied via var(--sheet-font)
+   in main.css / print.css. */
+.panel--sheet { --sheet-font: var(--font-frank); }
+.panel--sheet[data-font='Frank Ruhl Libre'] { --sheet-font: var(--font-frank); }
+.panel--sheet[data-font='David Libre']       { --sheet-font: var(--font-david); }
+.panel--sheet[data-font='Bellefair']         { --sheet-font: var(--font-bellefair); }
+.panel--sheet[data-font='Heebo']             { --sheet-font: var(--font-heebo); }

@@ -148,7 +148,7 @@ body {
   color: var(--color-accent-strong);
   padding: 0.35rem 0.4rem;
   border-radius: var(--radius);
-  font-family: var(--font-frank);
+  font-family: var(--sheet-font, var(--font-frank));
 }
 
 .sheet-toprow {
@@ -167,7 +167,7 @@ body {
   color: var(--color-accent-strong);
   padding: 0.25rem 0.7rem;
   border-radius: 6px;
-  font-family: var(--font-frank);
+  font-family: var(--sheet-font, var(--font-frank));
   font-weight: 600;
   cursor: text;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
@@ -315,7 +315,7 @@ body {
   font-size: 1rem;
   color: var(--color-accent-strong);
   min-width: 0;
-  font-family: var(--font-frank);
+  font-family: var(--sheet-font, var(--font-frank));
 }
 
 .source-card__title:hover,
@@ -362,7 +362,7 @@ body {
 }
 
 .source-card__text {
-  font-family: var(--font-frank);
+  font-family: var(--sheet-font, var(--font-frank));
   font-size: calc(var(--sheet-font-size, 14pt) * 1);
   line-height: 1.75;
   border: 1px dashed transparent;
