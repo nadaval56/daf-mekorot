@@ -64,7 +64,7 @@
     justify-content: space-between;
     align-items: baseline;
     margin: 0 0 0.3cm 0;
-    font-family: 'Frank Ruhl Libre', serif;
+    font-family: var(--sheet-font, 'Frank Ruhl Libre', serif);
     font-size: 11pt;
     color: #222;
   }
@@ -76,7 +76,7 @@
   .sheet__print-title {
     display: block !important;
     text-align: center;
-    font-family: 'Frank Ruhl Libre', serif;
+    font-family: var(--sheet-font, 'Frank Ruhl Libre', serif);
     font-size: 18pt;
     font-weight: 700;
     margin: 0 0 0.8cm 0;
@@ -124,7 +124,7 @@
   }
 
   .source-card__title {
-    font-family: 'Frank Ruhl Libre', serif;
+    font-family: var(--sheet-font, 'Frank Ruhl Libre', serif);
     font-size: 13pt;
     font-weight: 700;
     color: #000 !important;
@@ -134,7 +134,7 @@
   }
 
   .source-card__text {
-    font-family: 'Frank Ruhl Libre', serif;
+    font-family: var(--sheet-font, 'Frank Ruhl Libre', serif);
     color: #000 !important;
     border: 0 !important;
     background: transparent !important;
