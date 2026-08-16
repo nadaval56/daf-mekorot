@@ -457,10 +457,14 @@ export function uid(prefix = 'id') {
 
 export function debounce(fn, ms = 250) {
   let t;
-  return function debounced(...args) {
+  function debounced(...args) {
     clearTimeout(t);
     t = setTimeout(() => fn.apply(this, args), ms);
-  };
+  }
+  // Lets callers drop a pending call when they've just pushed the same
+  // value synchronously (e.g. an editable field flushing on blur).
+  debounced.cancel = () => clearTimeout(t);
+  return debounced;
 }
 
 export function formatDate(ts) {
