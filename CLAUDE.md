@@ -240,6 +240,24 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 
 `storage.js` חושף `loadActiveDraft`/`saveActiveDraft`/`loadSavedSheets`/`saveSheetToLibrary`/`deleteSavedSheet`/`duplicateSavedSheet`/`loadUserSettings`/`saveUserSettings`. Auto-save על ה-active draft מתבצע debounced 300ms דרך subscribe ב-`app.js`.
 
+### 8.1 רינדור הכרטיסים — reconciliation, **לא** `innerHTML = ''`
+
+`render()` נקרא על **כל** mutation במודל (`_emit`). לכן אסור לו לבנות מחדש את רשימת הכרטיסים: כל שדה `contenteditable` שהמשתמש מקליד בו הוא node שנהרס ברינדור, והפוקוס אבד באמצע מילה.
+
+זה בדיוק היה הבאג: הקלדת אות בכותרת → `pushTitle` (debounce 200ms) → `updateSource` → `_emit` → `render` → `listEl.innerHTML = ''` → הכרטיס נמחק והפוקוס נפל. המשתמש הצליח להקליד אות אחת, ואז נאלץ ללחוץ שוב עם העכבר. הדבקה עבדה כי היא אירוע בודד.
+
+הפתרון: `reconcileList(sources)` עם `cardCache: Map<sourceId, entry>`:
+- כרטיס קיים → **נעשה בו שימוש חוזר**; רק מה שהשתנה מתעדכן (`updateCard`).
+- הסדר נקבע ב-`insertBefore` מול cursor; כרטיסים שנעלמו מהמודל מוסרים מה-DOM ומה-cache.
+- **שדה שהמשתמש עורך בו כרגע לא נגעים בו** — `isEditing(node)` בודק `document.activeElement`.
+- `entry.renderedTitle` / `entry.renderedText` שומרים מה כבר מוצג, כדי לא לכתוב מחדש טקסט זהה (כתיבה מחדש הורסת את הסמן).
+- ה-listeners נרשמים **פעם אחת** ביצירת הכרטיס, ולכן הם קוראים את `useKinnuiNow` (משתנה חי) ולא ערך שנתפס ב-closure.
+
+כללים נלווים:
+- כל שדה עורך עושה גם push ב-`blur` (עם `pushTitle.cancel()` / `pushText.cancel()` כדי לבטל debounce תלוי) — כך שום עריכה לא הולכת לאיבוד אם המשתמש סוגר טאב מיד.
+- `debounce()` ב-`utils.js` חושף `.cancel()`.
+- בכינוי שם ה' ON: החלפת התוכן לצורה הקנונית קורית ב-**`pointerdown`** (לפני שהדפדפן ממקם את הסמן) ולא רק ב-`focus` — אחרת לחיצה בתוך הטקסט מאבדת את מיקום הסמן.
+
 ---
 
 ## 9. הדפסה / PDF

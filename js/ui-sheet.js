@@ -74,6 +74,19 @@ export function initSheetUI({ sheet, showToast }) {
     headerLeftInput.addEventListener('input', () => pushL(headerLeftInput.value));
   }
 
+  // Live copy of the kinnui setting. Card listeners are wired once, when
+  // the card DOM is created, so they must read the *current* value rather
+  // than one captured at creation time.
+  let useKinnuiNow = true;
+
+  // sourceId -> { li, numberEl, titleEl, textEl, badge, source,
+  //               renderedTitle, renderedText }
+  // The cards are reconciled in place (see reconcileList) instead of being
+  // rebuilt from scratch: rebuilding destroyed the contenteditable node the
+  // user was typing into — the debounced push fired ~200ms after a keypress,
+  // the model emitted, render() wiped the list and focus was lost mid-word.
+  const cardCache = new Map();
+
   function render(snapshot) {
     // Title (only update if user isn't actively editing this field).
     if (document.activeElement !== titleInput) {
@@ -142,13 +155,65 @@ export function initSheetUI({ sheet, showToast }) {
     emptyEl.hidden = hasSources;
     listEl.hidden = !hasSources;
 
-    const useKinnui = !!s.replaceHashemName;
-    listEl.innerHTML = '';
-    snapshot.sources.forEach((source, idx) => {
-      listEl.appendChild(renderCard(source, idx + 1, useKinnui));
-    });
+    useKinnuiNow = !!s.replaceHashemName;
+    reconcileList(snapshot.sources, useKinnuiNow);
 
     metaSpan.textContent = buildMeta(snapshot);
+  }
+
+  /**
+   * Keyed reconciliation: reuse the existing <li> for each source id,
+   * update only what changed, and never touch a field the user is
+   * currently editing. Order is fixed up with insertBefore.
+   */
+  function reconcileList(sources, useKinnui) {
+    const seen = new Set();
+    let cursor = listEl.firstChild;
+
+    sources.forEach((source, idx) => {
+      seen.add(source.id);
+      let entry = cardCache.get(source.id);
+      if (!entry) {
+        entry = createCard(source);
+        cardCache.set(source.id, entry);
+      }
+      entry.source = source;
+      updateCard(entry, source, idx + 1, useKinnui);
+
+      if (cursor === entry.li) {
+        cursor = cursor.nextSibling;
+      } else {
+        listEl.insertBefore(entry.li, cursor);
+      }
+    });
+
+    for (const [id, entry] of cardCache) {
+      if (!seen.has(id)) {
+        entry.li.remove();
+        cardCache.delete(id);
+      }
+    }
+  }
+
+  const isEditing = (node) => node === document.activeElement || node.contains(document.activeElement);
+
+  function updateCard(entry, source, number, useKinnui) {
+    entry.numberEl.textContent = `${number}.`;
+
+    const isCustom = source.type === 'custom';
+    entry.badge.title = isCustom ? 'מקור עצמאי' : (source.sefariaRef || 'ספריא');
+
+    const title = source.title || '';
+    if (title !== entry.renderedTitle && !isEditing(entry.titleEl)) {
+      entry.titleEl.textContent = title;
+      entry.renderedTitle = title;
+    }
+
+    const text = useKinnui ? applyHashemKinnui(source.text || '') : (source.text || '');
+    if (text !== entry.renderedText && !isEditing(entry.textEl)) {
+      entry.textEl.textContent = text;
+      entry.renderedText = text;
+    }
   }
 
   function buildMeta(snapshot) {
@@ -160,9 +225,14 @@ export function initSheetUI({ sheet, showToast }) {
     return parts.join(' • ');
   }
 
-  function renderCard(source, number, useKinnui = false) {
+  /**
+   * Build the DOM for one source card and wire its listeners. Called once
+   * per source — subsequent model changes go through updateCard.
+   * `entry` is filled in below and handed back to the cache.
+   */
+  function createCard(source) {
+    const entry = { source };
     const isCustom = source.type === 'custom';
-    const displayText = useKinnui ? applyHashemKinnui(source.text || '') : (source.text || '');
 
     const dragHandle = el('span', {
       class: 'source-card__drag',
@@ -170,18 +240,26 @@ export function initSheetUI({ sheet, showToast }) {
       'aria-label': 'גרור לשינוי סדר',
       text: '⋮⋮',
     });
-    const numberEl = el('span', { class: 'source-card__number', text: `${number}.` });
+    const numberEl = el('span', { class: 'source-card__number', text: '' });
     const titleEl = el('div', {
       class: 'source-card__title mixed-content',
       contenteditable: 'true',
       spellcheck: 'false',
       'data-placeholder': 'מראה מקום / כותרת',
-      text: source.title || '',
+      text: '',
     });
     const pushTitle = debounce(() => {
-      sheet.updateSource(source.id, { title: titleEl.textContent.trim() });
+      const v = titleEl.textContent.trim();
+      entry.renderedTitle = v;
+      sheet.updateSource(source.id, { title: v });
     }, 200);
     titleEl.addEventListener('input', pushTitle);
+    titleEl.addEventListener('blur', () => {
+      pushTitle.cancel();
+      const v = titleEl.textContent.trim();
+      entry.renderedTitle = v;
+      sheet.updateSource(source.id, { title: v });
+    });
 
     const badge = el('span', {
       class: `source-card__badge ${isCustom ? 'source-card__badge--custom' : ''}`,
@@ -226,33 +304,53 @@ export function initSheetUI({ sheet, showToast }) {
       contenteditable: 'true',
       spellcheck: 'false',
       'data-placeholder': isCustom ? 'הכנס את הטקסט כאן…' : 'טקסט המקור',
-      text: displayText,
+      text: '',
     });
-    if (useKinnui) {
-      // While the kinnui toggle is on we show the dashed form in the
-      // editable area. To let the user edit the canonical text, swap
-      // to the original on focus and re-apply the kinnui on blur.
-      textEl.addEventListener('focus', () => {
-        textEl.textContent = source.text || '';
-      });
-      textEl.addEventListener('blur', () => {
-        const v = textEl.innerText;
-        sheet.updateSource(source.id, { text: v });
-        textEl.textContent = applyHashemKinnui(v);
-      });
-    } else {
-      const pushText = debounce(() => {
-        sheet.updateSource(source.id, { text: textEl.innerText });
-      }, 200);
-      textEl.addEventListener('input', pushText);
-    }
+
+    const pushText = debounce(() => {
+      const v = textEl.innerText;
+      // Mark what the field already shows so the re-render triggered by
+      // this very update doesn't rewrite it under the caret.
+      entry.renderedText = useKinnuiNow ? applyHashemKinnui(v) : v;
+      sheet.updateSource(source.id, { text: v });
+    }, 200);
+    textEl.addEventListener('input', pushText);
+
+    // While the kinnui toggle is on we show the dashed form in the editable
+    // area. To let the user edit the canonical text, swap to the original on
+    // focus and re-apply the kinnui on blur.
+    const showCanonical = () => {
+      if (!useKinnuiNow) return;
+      const canonical = entry.source.text || '';
+      if (textEl.innerText === canonical) return;
+      textEl.textContent = canonical;
+      entry.renderedText = canonical;
+    };
+    // pointerdown runs *before* the browser places the caret, so swapping
+    // here keeps the click landing where the user aimed. The focus handler
+    // stays as the fallback for keyboard (Tab) focus.
+    textEl.addEventListener('pointerdown', showCanonical);
+    textEl.addEventListener('focus', showCanonical);
+    textEl.addEventListener('blur', () => {
+      pushText.cancel();
+      const v = textEl.innerText;
+      const shown = useKinnuiNow ? applyHashemKinnui(v) : v;
+      if (textEl.innerText !== shown) textEl.textContent = shown;
+      entry.renderedText = shown;
+      sheet.updateSource(source.id, { text: v });
+    });
 
     const li = el('li', {
       class: 'source-card',
       dataset: { sourceId: source.id },
     }, [head, textEl]);
     wireDragAndDrop(li, source.id, dragHandle);
-    return li;
+
+    Object.assign(entry, {
+      li, numberEl, titleEl, textEl, badge,
+      renderedTitle: '', renderedText: '',
+    });
+    return entry;
   }
 
   /* -------------------- drag & drop reordering -------------------- */
