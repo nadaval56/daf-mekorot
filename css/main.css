@@ -374,6 +374,9 @@ body {
   min-height: 1.5em;
 }
 
+/* שום תוכן פנימי (למשל <div> שהדפדפן יוצר ב-Enter) לא עוקף את היישור של הדף. */
+.source-card__text * { text-align: inherit !important; }
+
 /* מרווח שורות — "רגיל" משאיר את ברירת המחדל (1.75 במסך, 1.7 בהדפסה). */
 .sheet[data-line-height='tight'] { --sheet-line-height: 1.4; }
 .sheet[data-line-height='loose'] { --sheet-line-height: 2.05; }

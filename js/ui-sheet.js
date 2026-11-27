@@ -257,6 +257,7 @@ export function initSheetUI({ sheet, showToast }) {
       sheet.updateSource(source.id, { title: v });
     }, 200);
     titleEl.addEventListener('input', pushTitle);
+    titleEl.addEventListener('paste', (e) => pastePlainText(e, { singleLine: true }));
     titleEl.addEventListener('blur', () => {
       pushTitle.cancel();
       const v = titleEl.textContent.trim();
@@ -318,6 +319,7 @@ export function initSheetUI({ sheet, showToast }) {
       sheet.updateSource(source.id, { text: v });
     }, 200);
     textEl.addEventListener('input', pushText);
+    textEl.addEventListener('paste', pastePlainText);
 
     // While the kinnui toggle is on we show the dashed form in the editable
     // area. To let the user edit the canonical text, swap to the original on
@@ -338,7 +340,9 @@ export function initSheetUI({ sheet, showToast }) {
       pushText.cancel();
       const v = textEl.innerText;
       const shown = useKinnuiNow ? applyHashemKinnui(v) : v;
-      if (textEl.innerText !== shown) textEl.textContent = shown;
+      // Also flatten any leftover markup (rich text that got in by drag-drop,
+      // or the <div>s the browser creates on Enter) back to plain text.
+      if (textEl.innerText !== shown || textEl.firstElementChild) textEl.textContent = shown;
       entry.renderedText = shown;
       sheet.updateSource(source.id, { text: v });
     });
@@ -404,4 +408,21 @@ export function initSheetUI({ sheet, showToast }) {
   }
 
   return { render };
+}
+
+/**
+ * Paste as plain text. The default paste into a contenteditable keeps the
+ * source's markup — Word / web pages bring inline styles such as
+ * `text-align: right`, fonts and colours, which then override the sheet's
+ * own settings (justify, font, size). Non-breaking spaces are turned into
+ * regular ones so lines can wrap and stretch normally.
+ */
+function pastePlainText(e, { singleLine = false } = {}) {
+  const raw = e.clipboardData?.getData('text/plain');
+  if (raw == null) return; // nothing we can read — let the browser handle it
+  e.preventDefault();
+  let text = raw.replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
+  if (singleLine) text = text.replace(/\s*\n\s*/g, ' ').trim();
+  // execCommand keeps the browser's undo stack and fires `input`.
+  document.execCommand('insertText', false, text);
 }

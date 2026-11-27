@@ -254,6 +254,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 - ה-listeners נרשמים **פעם אחת** ביצירת הכרטיס, ולכן הם קוראים את `useKinnuiNow` (משתנה חי) ולא ערך שנתפס ב-closure.
 
 כללים נלווים:
+- **הדבקה = טקסט נקי בלבד** (`pastePlainText`). הדבקה רגילה ל-`contenteditable` שומרת את ה-HTML של המקור (Word / אתרים) כולל `style="text-align:right"`, פונט וצבע — וזה גבר על הגדרות הדף (כך "יישור לשני הצדדים" לא עבד על טקסט מודבק). ב-`blur` גם משטחים כל markup שנשאר (`firstElementChild`) חזרה ל-`textContent`.
 - כל שדה עורך עושה גם push ב-`blur` (עם `pushTitle.cancel()` / `pushText.cancel()` כדי לבטל debounce תלוי) — כך שום עריכה לא הולכת לאיבוד אם המשתמש סוגר טאב מיד.
 - `debounce()` ב-`utils.js` חושף `.cancel()`.
 - בכינוי שם ה' ON: החלפת התוכן לצורה הקנונית קורית ב-**`pointerdown`** (לפני שהדפדפן ממקם את הסמן) ולא רק ב-`focus` — אחרת לחיצה בתוך הטקסט מאבדת את מיקום הסמן.
