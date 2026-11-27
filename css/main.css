@@ -382,6 +382,13 @@ body {
 .sheet[data-justify='true'] .source-card__text {
   text-align: justify;
 }
+/* Firefox ו-Safari לא מיישרים טקסט עם white-space: pre-wrap (רווחים
+   "משמעותיים" לא נמתחים, לפי CSS 2.1) — רק Chromium כן. pre-line שומר על
+   ירידות השורה ומאפשר יישור בכל הדפדפנים. בזמן עריכה נשארים עם pre-wrap
+   כדי שהקלדת רווחים ב-contenteditable תתנהג כרגיל. */
+.sheet[data-justify='true'] .source-card__text:not(:focus) {
+  white-space: pre-line;
+}
 
 .source-card__text:hover,
 .source-card__text:focus {

@@ -268,7 +268,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 - **שום `page-break-inside: avoid`** על `.source-card`: מקור ארוך גולש טבעית לעמוד הבא. עם זאת, `widows`/`orphans` ו-`page-break-after: avoid` על ה-head כדי שכותרת לא תישאר לבד.
 - קו מפריד בין מקורות: מגוון ב-`[data-show-dividers='true']`.
 - מספרי עמודים: מוזרק דינמית כ-`<style>` עם `@page { @bottom-center { content: counter(page) " / " counter(pages); } }` כי `@page` לא ניתן לסינון לפי attribute selectors.
-- **הגדרות טיפוגרפיה**: `justify` → `data-justify` (מסך + הדפסה); `lineHeight` (`tight`/`normal`/`loose`) → `--sheet-line-height`, כש-`normal` לא מגדיר את המשתנה ונשאר על ברירות המחדל (1.75 מסך / 1.7 הדפסה); `twoColumns` → `data-two-columns`, **הדפסה בלבד** — `.source-list` עובר מ-flex ל-block עם `column-count: 2` (flex לא נשבר לעמודות). כותרת מקור בהדפסה: `min(13pt, --sheet-font-size)`.
+- **הגדרות טיפוגרפיה**: `justify` → `data-justify` (מסך + הדפסה). **חובה `white-space: pre-line`** יחד עם `text-align: justify`: Firefox ו-Safari לא מיישרים טקסט `pre-wrap` (רק Chromium), ולכן הבדיקה ב-Chromium לבדה לא תפסה את זה. בזמן פוקוס (עריכה) נשאר `pre-wrap`; `lineHeight` (`tight`/`normal`/`loose`) → `--sheet-line-height`, כש-`normal` לא מגדיר את המשתנה ונשאר על ברירות המחדל (1.75 מסך / 1.7 הדפסה); `twoColumns` → `data-two-columns`, **הדפסה בלבד** — `.source-list` עובר מ-flex ל-block עם `column-count: 2` (flex לא נשבר לעמודות). כותרת מקור בהדפסה: `min(13pt, --sheet-font-size)`.
 - **אין** קרדיט "מקור: ספריא" על דף ההדפסה (בכוונה — נשמר רק ב-footer של ה-HTML).
 
 ---
