@@ -254,6 +254,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 - ה-listeners נרשמים **פעם אחת** ביצירת הכרטיס, ולכן הם קוראים את `useKinnuiNow` (משתנה חי) ולא ערך שנתפס ב-closure.
 
 כללים נלווים:
+- **הדבקה = טקסט נקי בלבד** (`pastePlainText`). הדבקה רגילה ל-`contenteditable` שומרת את ה-HTML של המקור (Word / אתרים) כולל `style="text-align:right"`, פונט וצבע — וזה גבר על הגדרות הדף (כך "יישור לשני הצדדים" לא עבד על טקסט מודבק). ב-`blur` גם משטחים כל markup שנשאר (`firstElementChild`) חזרה ל-`textContent`.
 - כל שדה עורך עושה גם push ב-`blur` (עם `pushTitle.cancel()` / `pushText.cancel()` כדי לבטל debounce תלוי) — כך שום עריכה לא הולכת לאיבוד אם המשתמש סוגר טאב מיד.
 - `debounce()` ב-`utils.js` חושף `.cancel()`.
 - בכינוי שם ה' ON: החלפת התוכן לצורה הקנונית קורית ב-**`pointerdown`** (לפני שהדפדפן ממקם את הסמן) ולא רק ב-`focus` — אחרת לחיצה בתוך הטקסט מאבדת את מיקום הסמן.
@@ -268,7 +269,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 - **שום `page-break-inside: avoid`** על `.source-card`: מקור ארוך גולש טבעית לעמוד הבא. עם זאת, `widows`/`orphans` ו-`page-break-after: avoid` על ה-head כדי שכותרת לא תישאר לבד.
 - קו מפריד בין מקורות: מגוון ב-`[data-show-dividers='true']`.
 - מספרי עמודים: מוזרק דינמית כ-`<style>` עם `@page { @bottom-center { content: counter(page) " / " counter(pages); } }` כי `@page` לא ניתן לסינון לפי attribute selectors.
-- **הגדרות טיפוגרפיה**: `justify` → `data-justify` (מסך + הדפסה); `lineHeight` (`tight`/`normal`/`loose`) → `--sheet-line-height`, כש-`normal` לא מגדיר את המשתנה ונשאר על ברירות המחדל (1.75 מסך / 1.7 הדפסה); `twoColumns` → `data-two-columns`, **הדפסה בלבד** — `.source-list` עובר מ-flex ל-block עם `column-count: 2` (flex לא נשבר לעמודות). כותרת מקור בהדפסה: `min(13pt, --sheet-font-size)`.
+- **הגדרות טיפוגרפיה**: `justify` → `data-justify` (מסך + הדפסה). **חובה `white-space: pre-line`** יחד עם `text-align: justify`: Firefox ו-Safari לא מיישרים טקסט `pre-wrap` (רק Chromium), ולכן הבדיקה ב-Chromium לבדה לא תפסה את זה. בזמן פוקוס (עריכה) נשאר `pre-wrap`; `lineHeight` (`tight`/`normal`/`loose`) → `--sheet-line-height`, כש-`normal` לא מגדיר את המשתנה ונשאר על ברירות המחדל (1.75 מסך / 1.7 הדפסה); `twoColumns` → `data-two-columns`, **הדפסה בלבד** — `.source-list` עובר מ-flex ל-block עם `column-count: 2` (flex לא נשבר לעמודות). כותרת מקור בהדפסה: `min(13pt, --sheet-font-size)`.
 - **אין** קרדיט "מקור: ספריא" על דף ההדפסה (בכוונה — נשמר רק ב-footer של ה-HTML).
 
 ---

@@ -143,6 +143,11 @@
     line-height: var(--sheet-line-height, 1.7);
   }
 
+  /* יישור לשני הצדדים — ראה ההערה ב-main.css; בהדפסה גם אם השדה בפוקוס. */
+  .sheet[data-justify='true'] .source-card__text {
+    white-space: pre-line;
+  }
+
   /* שתי עמודות — המקורות זורמים מעמודה ימנית לשמאלית. flex לא נשבר
      לעמודות, לכן עוברים ל-block ומחליפים את ה-gap ב-margin. */
   .sheet[data-two-columns='true'] .source-list {
