@@ -374,6 +374,11 @@ body {
   min-height: 1.5em;
 }
 
+/* יישור לשני הצדדים — נשלט מההגדרות, חל גם על המסך וגם על ההדפסה. */
+.sheet[data-justify='true'] .source-card__text {
+  text-align: justify;
+}
+
 .source-card__text:hover,
 .source-card__text:focus {
   border-color: var(--color-border);

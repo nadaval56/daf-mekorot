@@ -226,7 +226,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
   headerRight: 'בס"ד',   // chip ימני
   headerLeft: '',         // chip שמאלי (תאריך / כותרת משנה)
   settings: {
-    font, fontSize, showNumbering, showDividers, showPageNumbers,
+    font, fontSize, justify, showNumbering, showDividers, showPageNumbers,
     replaceHashemName: true,   // default ON
     margins,
   },
