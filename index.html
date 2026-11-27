@@ -173,11 +173,25 @@
           <span>גודל גופן</span>
           <select data-role="setting-font-size">
             <option value="10">10pt</option>
+            <option value="11">11pt</option>
             <option value="12">12pt</option>
+            <option value="13">13pt</option>
             <option value="14" selected>14pt</option>
             <option value="16">16pt</option>
             <option value="18">18pt</option>
           </select>
+        </label>
+        <label class="field">
+          <span>מרווח שורות</span>
+          <select data-role="setting-line-height">
+            <option value="tight">צפוף</option>
+            <option value="normal" selected>רגיל</option>
+            <option value="loose">מרווח</option>
+          </select>
+        </label>
+        <label class="field field--inline">
+          <input type="checkbox" data-role="setting-two-columns" />
+          <span>שתי עמודות בהדפסה</span>
         </label>
         <label class="field field--inline">
           <input type="checkbox" data-role="setting-justify" />
@@ -220,6 +234,9 @@
         <ul class="library" data-role="library-list"></ul>
         <div class="library__empty" data-role="library-empty">עוד לא שמרת דפים.</div>
         <menu class="modal__actions">
+          <button type="button" class="btn btn--ghost" data-action="export-json" title="שמירת הדף הנוכחי כקובץ גיבוי">⬇ ייצא דף נוכחי לקובץ</button>
+          <button type="button" class="btn btn--ghost" data-action="import-json" title="טעינת דף מקובץ גיבוי אל הספרייה">⬆ ייבא דף מקובץ</button>
+          <input type="file" accept=".json,application/json" data-role="import-file" hidden />
           <button type="button" class="btn btn--ghost" data-action="close-library">סגור</button>
         </menu>
       </div>

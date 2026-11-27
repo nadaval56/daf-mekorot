@@ -26,7 +26,47 @@ export function exportSheetAsJSON(sheet) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Parse the text of a previously exported JSON file into a sheet object
+ * ready for the library. Throws on anything that isn't a sheet. Only known
+ * fields are kept, and the sheet gets a fresh id so an import can never
+ * overwrite an existing library entry.
+ */
+export function parseImportedSheet(text) {
+  const data = JSON.parse(text);
+  if (!data || typeof data !== 'object' || !Array.isArray(data.sources)) {
+    throw new Error('not a sheet file');
+  }
+  const str = (v) => (typeof v === 'string' ? v : '');
+  const now = Date.now();
+  const sources = data.sources
+    .filter((s) => s && typeof s === 'object')
+    .map((s) => ({
+      id: `source_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      type: s.type === 'sefaria' ? 'sefaria' : 'custom',
+      title: str(s.title),
+      text: str(s.text),
+      sefariaRef: str(s.sefariaRef),
+      sefariaHeRef: str(s.sefariaHeRef),
+      originalText: str(s.originalText),
+      hasBeenEdited: !!s.hasBeenEdited,
+    }));
+  const out = {
+    id: `sheet_${now}_${Math.random().toString(36).slice(2, 6)}`,
+    title: str(data.title).trim() || 'דף ללא שם',
+    createdAt: Number(data.createdAt) || now,
+    updatedAt: now,
+    settings: data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings)
+      ? { ...data.settings }
+      : {},
+    sources,
+  };
+  if (typeof data.headerRight === 'string') out.headerRight = data.headerRight;
+  if (typeof data.headerLeft === 'string') out.headerLeft = data.headerLeft;
+  return out;
 }
 
 function sanitizeFilename(name) {

@@ -226,7 +226,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
   headerRight: 'בס"ד',   // chip ימני
   headerLeft: '',         // chip שמאלי (תאריך / כותרת משנה)
   settings: {
-    font, fontSize, justify, showNumbering, showDividers, showPageNumbers,
+    font, fontSize, justify, lineHeight, twoColumns, showNumbering, showDividers, showPageNumbers,
     replaceHashemName: true,   // default ON
     margins,
   },
@@ -268,6 +268,7 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 - **שום `page-break-inside: avoid`** על `.source-card`: מקור ארוך גולש טבעית לעמוד הבא. עם זאת, `widows`/`orphans` ו-`page-break-after: avoid` על ה-head כדי שכותרת לא תישאר לבד.
 - קו מפריד בין מקורות: מגוון ב-`[data-show-dividers='true']`.
 - מספרי עמודים: מוזרק דינמית כ-`<style>` עם `@page { @bottom-center { content: counter(page) " / " counter(pages); } }` כי `@page` לא ניתן לסינון לפי attribute selectors.
+- **הגדרות טיפוגרפיה**: `justify` → `data-justify` (מסך + הדפסה); `lineHeight` (`tight`/`normal`/`loose`) → `--sheet-line-height`, כש-`normal` לא מגדיר את המשתנה ונשאר על ברירות המחדל (1.75 מסך / 1.7 הדפסה); `twoColumns` → `data-two-columns`, **הדפסה בלבד** — `.source-list` עובר מ-flex ל-block עם `column-count: 2` (flex לא נשבר לעמודות). כותרת מקור בהדפסה: `min(13pt, --sheet-font-size)`.
 - **אין** קרדיט "מקור: ספריא" על דף ההדפסה (בכוונה — נשמר רק ב-footer של ה-HTML).
 
 ---
@@ -303,7 +304,9 @@ if (sectionDepth >= 1 && textD >= 2 && Array.isArray(result.hebrew)) {
 - **Phase 6 (Polish)** ✅ — Hashem kinnui (כולל ניקוד-מודע), פורמט מראה מקום per-category, drag-and-drop, favicon, meta, no-cache, complex-schema fallback (כולל הגנת לולאה), back-button chain.
 - **Phase 7 (Mobile + sparse-commentary fix)** ✅ — `css/mobile.css` (`@media (max-width: 900px)`): ספריא למעלה / דף למטה, דף ללא גלילה פנימית, dropdown קטגוריות אנכי, כפתורי header icon-only. בנפרד: `drillIntoIndex` + walk-up ב-`loadRef`, תמיד-loadRef ב-`renderComplexBookIndex`, inline-at-chapter+ ב-`renderResult`, error UX (חזרה / נסה שוב / פתח בספריא). ראה סעיפים 4.4 ו-4.7.
 
-לא הוטמע: סימניות (bookmarks), ייצוא/ייבוא JSON של דפים (יש helper אבל לא מחווט ל-UI).
+- **Phase 8 (טיפוגרפיה + גיבוי)** ✅ — גדלי גופן 10–13pt, יישור לשני הצדדים, מרווח שורות, שתי עמודות בהדפסה, ייצוא/ייבוא JSON במודאל "הדפים שלי". הייבוא **לא הרסני**: `parseImportedSheet` (ב-`export.js`) מסנן לשדות מוכרים, נותן id חדש, והדף נכנס לספרייה בלי לגעת בטיוטה הפעילה.
+
+לא הוטמע: סימניות (bookmarks).
 
 ---
 

@@ -125,7 +125,8 @@
 
   .source-card__title {
     font-family: var(--sheet-font, 'Frank Ruhl Libre', serif);
-    font-size: 13pt;
+    /* 13pt, אבל לא גדול מטקסט המקור כשבוחרים גופן קטן. */
+    font-size: min(13pt, var(--sheet-font-size, 14pt));
     font-weight: 700;
     color: #000 !important;
     border: 0 !important;
@@ -139,7 +140,18 @@
     border: 0 !important;
     background: transparent !important;
     padding: 0 !important;
-    line-height: 1.7;
+    line-height: var(--sheet-line-height, 1.7);
+  }
+
+  /* שתי עמודות — המקורות זורמים מעמודה ימנית לשמאלית. flex לא נשבר
+     לעמודות, לכן עוברים ל-block ומחליפים את ה-gap ב-margin. */
+  .sheet[data-two-columns='true'] .source-list {
+    display: block;
+    column-count: 2;
+    column-gap: 1cm;
+  }
+  .sheet[data-two-columns='true'] .source-card + .source-card {
+    margin-top: 0.5cm;
   }
 
   /* Hide number column when disabled */
