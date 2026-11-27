@@ -110,6 +110,9 @@ export function initSheetUI({ sheet, showToast }) {
     const s = snapshot.settings || {};
     sheetPanel.dataset.font = s.font || 'Frank Ruhl Libre';
     sheetEl.dataset.fontSize = String(s.fontSize || 14);
+    sheetEl.dataset.justify = String(!!s.justify);
+    sheetEl.dataset.lineHeight = s.lineHeight || 'normal';
+    sheetEl.dataset.twoColumns = String(!!s.twoColumns);
     sheetEl.dataset.showNumbering = String(s.showNumbering !== false);
     sheetEl.dataset.showDividers = String(s.showDividers !== false);
     sheetEl.dataset.margins = s.margins || 'normal';

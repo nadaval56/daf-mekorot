@@ -11,7 +11,7 @@ import {
 import { Sheet, createEmptySheet, defaultSettings } from './sources.js';
 import { initBrowser } from './ui-browser.js';
 import { initSheetUI } from './ui-sheet.js';
-import { printSheet } from './export.js';
+import { printSheet, exportSheetAsJSON, parseImportedSheet } from './export.js';
 
 /* -------------------- Toast -------------------- */
 
@@ -74,6 +74,8 @@ document.addEventListener('click', (e) => {
     case 'save-sheet':      handleSaveSheet(); break;
     case 'open-library':    openLibrary(); break;
     case 'close-library':   closeLibrary(); break;
+    case 'export-json':     handleExportJSON(); break;
+    case 'import-json':     importFileInput?.click(); break;
     case 'open-settings':   openSettings(); break;
     case 'close-settings':  closeSettings(); break;
     case 'export-print':    printSheet(); break;
@@ -217,11 +219,41 @@ function renderLibrary() {
   }
 }
 
+/* -------------------- JSON export / import -------------------- */
+
+const importFileInput = $('[data-role="import-file"]');
+
+function handleExportJSON() {
+  exportSheetAsJSON(sheet.snapshot());
+  showToast('הקובץ ירד למחשב.');
+}
+
+// Import is non-destructive: the sheet lands in the library (with a fresh
+// id, so it never overwrites an existing entry) and the active draft is
+// left alone. The user opens it from the list like any other saved sheet.
+importFileInput?.addEventListener('change', async () => {
+  const file = importFileInput.files?.[0];
+  importFileInput.value = ''; // allow re-importing the same file
+  if (!file) return;
+  try {
+    const imported = parseImportedSheet(await file.text());
+    saveSheetToLibrary(imported);
+    renderLibrary();
+    showToast(`יובא לספרייה: ${truncate(imported.title, 40)}`);
+  } catch (err) {
+    console.error('[import]', err);
+    showToast('הקובץ אינו קובץ דף מקורות תקין.', 'error');
+  }
+});
+
 /* -------------------- Settings modal -------------------- */
 
 const settingsModal = $('[data-role="settings-modal"]');
 const fontSel = $('[data-role="setting-font"]');
 const fontSizeSel = $('[data-role="setting-font-size"]');
+const lineHeightSel = $('[data-role="setting-line-height"]');
+const twoColumnsChk = $('[data-role="setting-two-columns"]');
+const justifyChk = $('[data-role="setting-justify"]');
 const numberingChk = $('[data-role="setting-numbering"]');
 const dividersChk = $('[data-role="setting-dividers"]');
 const pageNumbersChk = $('[data-role="setting-page-numbers"]');
@@ -232,6 +264,9 @@ function readSettingsFromForm() {
   return {
     font: fontSel.value,
     fontSize: parseInt(fontSizeSel.value, 10) || 14,
+    justify: !!justifyChk?.checked,
+    lineHeight: lineHeightSel?.value || 'normal',
+    twoColumns: !!twoColumnsChk?.checked,
     showNumbering: numberingChk.checked,
     showDividers: dividersChk.checked,
     showPageNumbers: pageNumbersChk.checked,
@@ -244,6 +279,9 @@ function syncSettingsForm(settings) {
   const s = { ...defaultSettings(), ...(settings || {}) };
   fontSel.value = s.font;
   fontSizeSel.value = String(s.fontSize);
+  if (justifyChk) justifyChk.checked = !!s.justify;
+  if (lineHeightSel) lineHeightSel.value = s.lineHeight || 'normal';
+  if (twoColumnsChk) twoColumnsChk.checked = !!s.twoColumns;
   numberingChk.checked = s.showNumbering !== false;
   dividersChk.checked = s.showDividers !== false;
   pageNumbersChk.checked = !!s.showPageNumbers;
@@ -262,7 +300,7 @@ function closeSettings() {
 }
 
 // Live-apply settings on change (no separate "save" button needed).
-for (const ctrl of [fontSel, fontSizeSel, numberingChk, dividersChk, pageNumbersChk, hashemKinnuiChk, marginsSel].filter(Boolean)) {
+for (const ctrl of [fontSel, fontSizeSel, lineHeightSel, twoColumnsChk, justifyChk, numberingChk, dividersChk, pageNumbersChk, hashemKinnuiChk, marginsSel].filter(Boolean)) {
   ctrl.addEventListener('change', () => {
     const next = readSettingsFromForm();
     sheet.updateSettings(next);

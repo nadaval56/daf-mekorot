@@ -8,6 +8,9 @@ import { uid } from './utils.js';
 const DEFAULT_SETTINGS = Object.freeze({
   font: 'Frank Ruhl Libre',
   fontSize: 14,
+  justify: false,
+  lineHeight: 'normal',   // 'tight' | 'normal' | 'loose'
+  twoColumns: false,      // print only
   showNumbering: true,
   showDividers: true,
   showPageNumbers: false,
